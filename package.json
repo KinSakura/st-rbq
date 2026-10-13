@@ -1,7 +1,7 @@
 {
   "name": "st-rbq",
-  "version": "0.1.0",
+  "version": "2.9.3",
   "private": true,
   "type": "module",
-  "description": "RBQ 数据库：自包含的 SillyTavern 扩展（表格引擎 + 面板 + 编辑器），取代 rbq.js + statusbar.js + 记忆增强表格插件"
+  "description": "RBQ 数据库：SillyTavern 扩展 —— 表格数据库 + 侧路 API 填表 + 长期记忆 + 逐楼快照回滚 + 沉浸式视图（零构建，纯 ESM）"
 }

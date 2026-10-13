@@ -382,14 +382,14 @@ st-rbq/
 - **核心冒烟测试**（纯 Node，不需要酒馆）：
 
 ```bash
-node st-rbq/tools/smoke-test.mjs
+node tools/smoke-test.mjs
 ```
 
 - **结构 / 别名生成**（改表结构或加别名时）：
 
 ```bash
-node st-rbq/tools/build-schema.mjs  <表配置.json>  st-rbq/data/default-schema.json
-node st-rbq/tools/build-aliases.mjs
+node tools/build-schema.mjs  <表配置.json>  data/default-schema.json
+node tools/build-aliases.mjs
 ```
 
 - **调试用 API**（`F12` 直接调）：
@@ -429,5 +429,5 @@ MIT License —— 见 [LICENSE](LICENSE)。
 
 ## 致谢
 
-- 机制参考：`muyoou/st-memory-enhancement`（记忆增强表格）
-- 以及老 RBQ 脚本 —— 本扩展是它的重做版
+- [`muyoou/st-memory-enhancement`](https://github.com/muyoou/st-memory-enhancement) —— 记忆增强表格：
+  存储分层、按楼快照、逐格 diff 的思路都来自它
