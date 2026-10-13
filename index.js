@@ -28,18 +28,18 @@ import * as vars from './core/vars.js';
 import * as legacyVars from './core/legacyVars.js';
 import * as inspiration from './core/inspiration.js';
 import * as sideApi from './core/sideApi.js';
-import { extractProse } from './core/prose.js';
+import { extractProse, extractProseStrict } from './core/prose.js';
 import * as sidePipeline from './core/sidePipeline.js';
 import { expandUnparsed } from './core/expand.js';
 import * as persona from './core/persona.js';
-import * as progress from './ui/progress.js?v=2970';
+import * as progress from './ui/progress.js?v=21100';
 import { closeNotify } from './core/ctx.js';
 import * as updater from './core/updater.js';
 import * as presetImport from './core/presetImport.js';
 import * as summary from './core/summary.js';
 import { macroTableData, macroTablePrompt, macroAllTablesJson, buildTableData } from './prompts/prompts.js';
-import { mountPanel, showPanel, togglePanel, refreshPanel } from './ui/panel.js?v=2970';
-import { startInputButtonInjection, setPanelOpener, refreshBadge, stopInputButton } from './ui/inputButton.js?v=2970';
+import { mountPanel, showPanel, togglePanel, refreshPanel } from './ui/panel.js?v=21100';
+import { startInputButtonInjection, setPanelOpener, refreshBadge, stopInputButton } from './ui/inputButton.js?v=21100';
 
 const VERSION = '0.1.0';
 let initialized = false;
@@ -148,6 +148,8 @@ export async function processFactsText(text, messageIndex = null) {
 function backfillAnchors() {
   try {
     const list = chat();
+    /* 【删楼层定位用】顺手记住"当前这一串消息引用"✓（启动 / 换聊天 / 删楼前都会走到这里 ✓） */
+    try { runtime.lastChatRefs = [...list]; } catch (e) { /* ignore */ }
     const idx = [];
     list.forEach((m, i) => { if (m && m.is_user !== true && m.rbqdb_anchor) idx.push(i); });
     if (!idx.length) return 0;
@@ -247,6 +249,8 @@ function bindEvents() {
 
   // 换聊天：清缓存 + 重载
   onType('CHAT_CHANGED', () => {
+    /* 【删楼层定位用】换聊天了 → 重新记住"当前这一串消息引用"✓ */
+    try { runtime.lastChatRefs = [...chat()]; } catch (e) { /* ignore */ }
     setTimeout(() => { try { if (store.getConfigValue('persona.wrap', true) !== false) persona.applyPersona({ onlyCurrent: false }); } catch (e) { /* ignore */ } }, 800);
     try { backfillAnchors(); } catch (e) { /* ignore */ }
     invalidate();
@@ -338,6 +342,7 @@ function bindEvents() {
             // 不冻结它们会把刚清空的表又写回数据 ✗（我自己在测试环境复现过：剩 4 行残留 ✓）
             try { sidePipeline.freezeFor?.(15000); } catch (e) { /* ignore */ }
             try { memory.removeByMsgId?.(i); } catch (e) { /* ignore */ }
+    try { summary.removeByMsgId?.(i); } catch (e) { /* ignore */ }
             try { extras.applyAll({ quiet: true }); } catch (e) { /* ignore */ }
             try { inject.applyNativeInjection(); } catch (e) { /* ignore */ }
             try { refreshPanel(); } catch (e) { /* ignore */ }
@@ -351,6 +356,7 @@ function bindEvents() {
           console.log('[RBQ] ' + why + '：第 ' + i + ' 层的锚点没有可用版本号 ✗');
         }
         try { memory.removeByMsgId?.(i); } catch (e) { /* ignore */ }
+    try { summary.removeByMsgId?.(i); } catch (e) { /* ignore */ }
         /* 【关键】回滚完必须**重新推送**给酒馆 ✓✓
            对比记忆增强插件：它是在拼提示词那一刻用【宏现算】表格文本（拉取式 ✓ 永远最新）；
            我们的"原生注入"是 setExtensionPrompt **推送式** ✗ ——
@@ -392,29 +398,52 @@ function bindEvents() {
      【兜底】万一抓不到（比如程序化清空聊天 ✓）→ 退回"剩下最后一条带锚点的层"的 afterSnapshot ✓ */
   onType('MESSAGE_DELETED', async (deletedId) => {
     try {
-      backfillAnchors();   // 先给缺快照的旧楼层补上 ✓
-      /* 【必须浅拷贝】chat() 给的就是酒馆那个数组本身 ✗ 酒馆原地删改 ✓
-         不拷贝的话，等删完再看它已经少了一条 → 定位不到被删的是哪层 ✗（诊断实测 -1 ✓） */
-      const before = [...chat()];
+      /* ⚠️ 顺序很重要：必须在 backfillAnchors() 之前把"上一次的引用"读出来 ✓
+         （backfillAnchors 会顺手把 lastChatRefs 更新成【现在】的数组 ✗ 那就白记了 ✓） */
+      const prev = Array.isArray(runtime.lastChatRefs) ? runtime.lastChatRefs : null;
+      backfillAnchors();   // 再给缺快照的旧楼层补上 ✓
+      /* 【有效性别断】只有"上一次记下来的那串引用几乎全都还在"时，它才算可信的"删前状态" ✓
+         否则（比如扩展刚加载、harness 里刚造的消息 ✓）它已经过时了 ✗
+         → 过时就退回老办法（拿事件时的数组当删前 + 等它变短 ✓）✓ */
+      const nowAll = [...chat()];
+      const aliveCount = prev ? prev.filter((m) => m && nowAll.includes(m)).length : 0;
+      /* 判据收紧 ✓：必须"正好只少了一条、其余全在"才算可信 ✓
+         （以前只要求"大部分还在"✗ → 引用过时了也会被当成删前 → 挑错被删的那层 ✗） */
+      const prevValid = !!(prev && prev.length === nowAll.length + 1 && aliveCount === nowAll.length);
+      if (!prevValid) {
+        /* 数组可能还在"删之前"（有的环境先发事件再删 ✓）→ 短等一下 ✓ 但别久等 ✗（拖慢删楼体验 ✓） */
+        try {
+          if (chat().length >= nowAll.length) {
+            const { waitFor } = await import('./core/util.js');
+            await waitFor(() => chat().length < nowAll.length, { timeout: 400, interval: 40 });
+          }
+        } catch (e) { /* ignore */ }
+      }
+      const before = prevValid ? prev.slice() : nowAll.slice();
+      const gone = prevValid ? prev.filter((m) => m && !nowAll.includes(m)) : [];
+      const deletedRef = gone.length ? gone[gone.length - 1] : null;
+      const afterNow = [...chat()];
+      runtime.lastChatRefs = afterNow;
       const lenAtEvent = before.length;
-      /* ① 立刻抓下每条消息的锚点快照（浅拷贝，之后数组怎么变都不影响 ✓） */
       const snapshotOf = new Map();
       let picked = null;
       for (const m of before) {
         if (!m || !m.rbqdb_anchor) continue;
         snapshotOf.set(m, { a: { ...m.rbqdb_anchor }, msg: m, mes: String(m.mes ?? '').slice(0, 60) });
       }
-      /* ② 如果事件给了 id/对象，优先按它取（最准 ✓） */
+      /* ① 首选：我们记住的"被删引用"✓（真实酒馆走这条：先删数组再 emit ✓） */
       try {
-        if (deletedId && typeof deletedId === 'object' && deletedId.rbqdb_anchor) picked = snapshotOf.get(deletedId) ?? { a: { ...deletedId.rbqdb_anchor }, msg: deletedId };
+        if (deletedRef && deletedRef.rbqdb_anchor) picked = snapshotOf.get(deletedRef) ?? { a: { ...deletedRef.rbqdb_anchor }, msg: deletedRef };
+      } catch (e) { /* ignore */ }
+      /* ② 其次：万一酒馆把被删消息/下标当载荷传过来 ✓ */
+      try {
+        if (!picked && deletedId && typeof deletedId === 'object' && deletedId.rbqdb_anchor) picked = snapshotOf.get(deletedId) ?? { a: { ...deletedId.rbqdb_anchor }, msg: deletedId };
         const idx = Number(deletedId);
         if (!picked && Number.isInteger(idx) && before[idx] && before[idx].rbqdb_anchor) picked = snapshotOf.get(before[idx]) ?? { a: { ...before[idx].rbqdb_anchor }, msg: before[idx] };
       } catch (e) { /* ignore */ }
 
-      const { waitFor } = await import('./core/util.js');
-      await waitFor(() => chat().length < lenAtEvent, { timeout: 3000, interval: 60 });
-      const after = chat();
-      console.log('[RBQ] 删楼层：事件时 ' + lenAtEvent + ' 条 → 现在 ' + after.length + ' 条（id=' + String(deletedId) + '）');
+      const after = afterNow;
+      console.log('[RBQ] 删楼层：上一次 ' + lenAtEvent + ' 条 → 现在 ' + after.length + ' 条（按身份定位=' + (deletedRef ? '命中' : '未命中') + '，引用可信=' + prevValid + '，载荷=' + String(deletedId) + '）');
 
       /* ③ 没按 id 取到时，用"对象身份差集"找出被删的那条 ✓ */
       if (!picked) {
@@ -458,9 +487,11 @@ function bindEvents() {
       /* 兜底：有些聊天/旧数据里消息没带 is_user 标记 ✗ → 再用"总条数"判一次 ✓
          （删掉唯一那层剧情后，聊天里只剩开场那一条 ✓ → 同样该清空 ✓） */
       const remainTotal = after.filter((m) => m && String(m.mes ?? '').trim()).length;
+      console.log('[RBQ] 删楼层·判定：剩下的 AI 层=' + remainAiFloors + '，有内容的条数=' + remainTotal + '，数组长度=' + after.length);
       if (remainAiFloors === 0 || remainTotal <= 1) {
         await store.clearAllTables();
         try { memory.clearAll?.(); } catch (e) { /* ignore */ }
+    try { summary.clearAll?.(); } catch (e) { /* ignore */ }
         console.log('[RBQ] 删楼层：聊天里已经没有剧情楼层了 → 已清空全部表格与记忆 ✓（AI 下次只会收到"数据库为空"提示 ✓）');
         restored = true;
       }
@@ -487,10 +518,23 @@ function bindEvents() {
         }
       }
 
-      /* ⑤ 被删掉的那些层写的记忆清掉 + 重推注入 ✓ */
+      /* ⑤ 被删掉的那些层写的记忆清掉 + 存活楼层的记录重映射到新下标 ✓
+         【修 bug】以前这里把"现存带锚点的 AI 层数"当起始下标用 ✗（数量 ≠ 下标）
+         → 会把仍然在场的楼层记忆/小总结误删 ✓ 而被删那层反而可能没清 ✓
+         现在改成：按 before/after 的对象身份算出【旧下标 → 新下标】映射 ✓
+         · 还在的楼层 → 记录里的 msgId 跟着改 ✓（否则删一层之后全体错位 ✓）
+         · 已经不在的楼层 → 它的记忆/小总结被删掉 ✓ */
       try {
-        const keep = after.filter((m) => m && !m.is_user && m.rbqdb_anchor).length;
-        for (let k = keep - 1 + 1; k < lenAtEvent + 3; k++) memory.removeByMsgId?.(k);
+        const oldOf = new Map();
+        for (let oi = 0; oi < before.length; oi++) oldOf.set(before[oi], oi);
+        const remap = new Map();
+        for (let ni = 0; ni < after.length; ni++) {
+          const oi = oldOf.get(after[ni]);
+          if (oi !== undefined) remap.set(oi, ni);
+        }
+        try { memory.remapMsgIds?.(remap); } catch (e) { /* ignore */ }
+        try { summary.remapMsgIds?.(remap); } catch (e) { /* ignore */ }
+        console.log('[RBQ] 删楼层后已重映射记忆/小总结的下标（存活 ' + remap.size + ' 层 ✓ 被删层的记录已清除 ✓）');
       } catch (e) { /* ignore */ }
       try { extras.applyAll({ quiet: true }); } catch (e) { /* ignore */ }
       try { inject.applyNativeInjection(); } catch (e) { /* ignore */ }
@@ -592,6 +636,7 @@ async function handleGenerationEndedResolved(target) {
       try {
         const mem = await import("./core/memory.js");
         mem.removeByMsgId?.(target);
+      try { summary.removeByMsgId?.(target); } catch (e) { /* 小总结也要成对清掉 ✓ 以前漏了 ✗ */ }
       } catch (e) { /* ignore */ }
     }
   } catch (e) { console.warn("[RBQ] 重新生成前回滚失败", e); }
@@ -607,7 +652,20 @@ async function handleGenerationEndedResolved(target) {
   // 侧路 API：每条 AI 正文都跑（与「有没有表格标签」无关 —— 侧路接管填表后正文里本来就没有标签）
   try {
     const sideRaw = String(chat()[target]?.mes ?? '');
-    let body = extractProse(sideRaw);
+    /* ⚠️ sideRound 必须【先定义】再往下用（上一轮我把它写在 635 行、617 行就用了 ✗
+       → const 的暂时性死区 → 每次抛 ReferenceError 被 catch 吞掉 ✓
+       结果：小总结落库其实一次都没成功 ✓ 这个 bug 由代码审计发现 ✓ 现在提到前面 ✓） */
+    const sideRound = (() => { try { return addons.roundInfo().round; } catch { return 0; } })();
+    /* 【修 bug】以前 summary.maintain 从来没被调用 ✗ → 小总结根本没存进库 ✓
+       这里用【原始】正文解析（<This_round_events> 就在原文里 ✓）
+       → 落库到本聊天的 summary.events（按轮次一条 ✓）→ 之后会被召回给主 AI ✓ */
+    try {
+      const sm = summary.maintain(sideRaw, sideRound, target);
+      if (sm && sm.small && sm.small.found) console.log('[RBQ] 小总结已存（第 ' + sideRound + ' 轮，库里共 ' + (sm.events || 0) + ' 条）');
+      /* 立刻落盘一次 ✓（否则要等这一轮后面某次 commit 才写进聊天 ✓ 中途刷新会丢 ✓） */
+      await store.commit({ persist: true });
+    } catch (e) { console.warn('[RBQ] 小总结落库失败', e); }
+    let body = extractProseStrict(sideRaw);   // 【用户要求】被标签包裹的内容一律剔除（只有正文不带标签 ✓）
     // 正文提空时不要静默跳过：退回"去掉已知元信息块"的原始文本，并告诉用户发生了什么
     if (!body || body.trim().length < 8) {
       try {
@@ -620,7 +678,6 @@ async function handleGenerationEndedResolved(target) {
       } catch { /* ignore */ }
       if (body && body.trim().length >= 8) notify('info', '正文里可读的文字很少，已退回用整条消息做填表输入。');
     }
-    const sideRound = (() => { try { return addons.roundInfo().round; } catch { return 0; } })();
 
     // 启动前把"为什么不跑"说清楚（并且**一定打在控制台** ✓ 方便排查）
     const __gate = { enabled: sideApi.enabled(), usable: sideApi.isUsable(), hasBody: !!body, len: body ? body.length : 0 };
@@ -746,6 +803,17 @@ async function handleGenerationEndedResolved(target) {
         }
       } catch (e) { console.warn('[RBQ] 侧路记录 beforeRev 失败', e); }
       sidePipeline.runForMessage(target, body, { round: sideRound, onProgress, signal: ac.signal }).then((r) => {
+        /* 【用户要求】等这一轮「填表 + 所有角色记忆」都写完 → 用最新的表0时间统一回填本轮记忆 ✓
+           （记忆是填表之后写的 ✓ 但收尾可能还会补写表0 → 所以最后再统一盖一次最准 ✓） */
+        try {
+          setTimeout(() => {
+            try {
+              const tt = extras.timeBoxText();
+              const n = memory.stampRoundTime(sideRound, tt);
+              if (n) { store.commit({ persist: true }); console.log('[RBQ] 已给 ' + n + ' 条记忆写上时间框：' + tt); }
+            } catch (e) { /* ignore */ }
+          }, 800);
+        } catch (e) { /* ignore */ }
         if (r && r.tasks) {
           let line = sidePipeline.statusLine(r);
           console.log('[RBQ] 侧路完成：' + line);
@@ -767,6 +835,9 @@ async function handleGenerationEndedResolved(target) {
                 // 再拍一张"写入之后"的快照（删楼层时还原用 ✓，同样是插件那套做法 ✓）
                 try { a0.afterSnapshot = store.snapshotTables(); } catch (e) { /* ignore */ }
                 store.setAnchor(m0, a0);
+                /* 【删楼层定位用】这一轮写完了 → 记住"当前这一串消息引用"✓
+                   下次删楼层时，被删的那条 = 这次有、下次没有的 ✓（不依赖酒馆事件参数 ✓） */
+                try { runtime.lastChatRefs = [...chat()]; } catch (e) { /* ignore */ }
                 console.log('[RBQ] 第 ' + target + ' 层锚点已更新：beforeRev=' + a0.beforeRev + ' rev=' + a0.rev + ' 快照=' + (a0.beforeSnapshot ? 'before✓' : 'before✗') + '/' + (a0.afterSnapshot ? 'after✓' : 'after✗'));
               }
             } catch (e) { /* ignore */ }
@@ -1005,6 +1076,23 @@ function safeBoot() {
     try { backfillAnchors(); } catch (e) { /* ignore */ }
     /* 插件更新：启动后自动查一次（多源兜底 ✓）有新版本提示一次 ✓ 失败静默 ✓ */
     setTimeout(() => { try { updater.bootCheck(); } catch (e) { /* ignore */ } }, 6000);
+    /* 【新增内置列 · 迁移】老用户如果存过"本聊天的表结构覆盖" ✓ 新加的列不会自动出现 ✗
+       → 启动时补一次 ✓（只补缺的那一列，别的不动 ✓）
+       用户需求：表3 缺"容貌描述"→ 剧情里角色难以区分 ✓ 现在补上 ✓ */
+    setTimeout(() => { try { store.ensureBuiltinColumns(3, '容貌描述', '三围'); } catch (e) { /* ignore */ } }, 2500);
+    /* 先拿到酒馆真实的 oai_settings（ctx 里那份是克隆 ✗ 读不到预设 ✓）*/
+    setTimeout(() => { try { sidePipeline.initPresetSource(); } catch (e) { /* ignore */ } }, 1200);
+    /* 【用户反馈 · 反复提醒预设更新】启动后自动比一次：
+       如果你现在实际在用的预设就是内置那份 → 直接记下版本 ✓ 胶囊就不会一直挂着了 ✓ */
+    setTimeout(() => {
+      try {
+        presetImport.detectAlreadyImported()
+          .then(() => { try { refreshPanel(); } catch (e) { /* ignore */ } })
+          .catch(() => {});
+      } catch (e) { /* ignore */ }
+    }, 7000);
+    /* 记忆条目要显示「这一轮的表0时间框」✓（格式与时间框完全一致 ✓）*/
+    try { memory.setTimeBoxProvider(() => extras.timeBoxText()); } catch (e) { /* ignore */ }
     /* 角色设定自动处理（老 RBQ 的功能 ✓ 自动、不弹气泡 ✓） */
     try { personaAutoApply(); } catch (e) { /* ignore */ }
     console.log('[RBQ] 启动完成。');
@@ -1015,7 +1103,7 @@ function boot() {
   if (initialized) return;
   if (!ctx()) {
     console.warn('[RBQ] 拿不到酒馆上下文，1 秒后重试。');
-    setTimeout(boot, 1000);
+    setTimeout(safeBoot, 1000);
     return;
   }
   initialized = true;
@@ -1046,6 +1134,6 @@ if (!onType('APP_READY', () => safeBoot())) {
   if (d && d.readyState !== 'loading') setTimeout(boot, 300);
   else d?.addEventListener?.('DOMContentLoaded', () => setTimeout(safeBoot, 300));
 }
-setTimeout(boot, 2500);   // 双保险
+setTimeout(safeBoot, 2500);   // 双保险（必须 safeBoot ✗ 否则初始化不跑）
 
 export { boot, processMessage, txn, store, protocol, getTable, chatMetadata, stopInputButton };

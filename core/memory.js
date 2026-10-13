@@ -104,6 +104,33 @@ function currentRound() {
  * 写入一批记忆（去重：同角色 + 相同正文不重复记）。
  * @returns {{added:number, characters:string[]}}
  */
+/* 【用户要求】记忆条目上带"这一轮的表0时间框" ✓（不再记真实时钟 ✓）
+   取值由外部注入（index.js 接 extras.timeBoxText ✓）→ 避免和 extras.js 循环依赖 ✓ */
+let __timeBoxProvider = null;
+export function setTimeBoxProvider(fn) { __timeBoxProvider = (typeof fn === "function") ? fn : null; }
+/** 当前时间框文字（拿不到就返回空串 ✓） */
+export function currentTimeBox() {
+  try { const v = __timeBoxProvider ? __timeBoxProvider() : ""; return String(v ?? "").trim(); } catch (e) { return ""; }
+}
+/**
+ * 【用户要求】等"这一轮所有角色记忆 + 最新表格数据"都落定后，把这轮记忆的时间统一改成最新表0时间 ✓
+ *   （记忆是在填表之后才写的 ✓ 但收口/补写可能又动了表0 → 所以最后再回填一次最准 ✓）
+ */
+export function stampRoundTime(round, timeText) {
+  const t = String(timeText ?? "").trim();
+  if (!t) return 0;
+  const mem = profile();
+  let n = 0;
+  for (const name of Object.keys(mem)) {
+    for (const e of (Array.isArray(mem[name]) ? mem[name] : [])) {
+      if (round !== undefined && round !== null && Number(e.round) !== Number(round)) continue;
+      if (e.t === t) continue;
+      e.t = t; n++;
+    }
+  }
+  return n;
+}
+
 export function addMemories(items, msgId) {
   const mem = profile();
   let added = 0;
@@ -128,7 +155,8 @@ export function addMemories(items, msgId) {
     if (list.some((x) => String(x.raw ?? '').slice(0, 40) === sig)) continue;
     list.push({
       id: `m${round}_${list.length}_${Math.random().toString(36).slice(2, 6)}`,
-      at: Date.now(),
+      at: Date.now(),          // 真实写入时刻（内部用，界面不再显示它 ✓）
+      t: currentTimeBox(),     // 【用户要求】这一轮的表0时间框（跟时间框同格式 ✓）
       round,
       msgCount,
       msgId: msgId === undefined ? null : msgId,
@@ -345,12 +373,23 @@ export function recall({ names = null, query = '', limit = 8, minScore = 0.12 } 
   return out.slice(0, limit);
 }
 
-/** 一条记忆压成一行可读文本 */
+/**
+ * 一条记忆压成"可读文本"（这就是发给 AI 的格式 ✓）
+ *   【用户要求】要像这样带字段名与时间，别挤成一行、别没有标签 ✗：
+ *     - 【苏越｜第1轮｜『新历742年-11月04日-星期三-23:15 - 第四码头铁皮屋 - 暴雨/12℃ - 警戒区』】
+ *       【感知】…
+ *       【情绪】…
+ *       【意图】…
+ *       【记忆锚点】…
+ *   没有解析出字段的老数据 → 退回原始整段（不丢内容 ✓）
+ */
 export function line(name, e) {
   const f = e.fields ?? {};
-  const bits = [f['感知'], f['情绪'], f['意图'], f['记忆锚点']].filter(Boolean);
-  const body = bits.length ? bits.join('｜') : e.raw;
-  return `- [${name}｜第${e.round}轮] ${body}`;
+  const head = '【' + name + '｜第' + e.round + '轮' + (e.t ? ('｜' + e.t) : '') + '】';
+  const pairs = [['感知', f['感知']], ['情绪', f['情绪']], ['意图', f['意图']], ['记忆锚点', f['记忆锚点']]];
+  const body = pairs.filter(([, v]) => v).map(([k, v]) => '【' + k + '】' + v).join('\n  ');
+  if (!body) return '- ' + head + ' ' + String(e.raw ?? '').trim();
+  return '- ' + head + '\n  ' + body;
 }
 
 /**

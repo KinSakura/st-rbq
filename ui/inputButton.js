@@ -198,7 +198,7 @@ export function injectInputButton() {
   // 工具栏按钮能插就插（宽屏时它就是主入口）
   if (!anchorOk) {
     if (dd) ensureFloatingButton(dd);
-    return true;
+    return false;   // 【审计修】工具栏按钮没插上就返回 false ✓（以前恒 true → 轮询提前放弃、30 秒告警永不触发 ✗）
   }
   // 注意：这里用 send.ownerDocument，别用 doc()
   const docOwner = send.ownerDocument;

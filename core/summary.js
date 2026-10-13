@@ -57,17 +57,62 @@ export function hideScript() {
 
 function data() { const d = store.getData({ create: true }); if (!d.summary) d.summary = { events: [] }; return d.summary; }
 
-/** 落库：把这一轮的小总结追加进本轮事件表（按轮次去重） */
-export function recordSmall(round, parsed) {
+/** 落库：把这一轮的小总结追加进本轮事件表（按轮次去重）
+ *  存在**本聊天**的数据里：`chatMetadata.rbqdb…summary.events` ✓
+ *  每轮一条（同轮覆盖 ✓），按轮次排序，最多留 400 条 ✓
+ *  msgId = 这条小总结是哪一楼写出来的 ✓（回滚/删楼时要按它清掉 ✓）
+ */
+export function recordSmall(round, parsed, msgId) {
   if (!parsed?.found) return 0;
   const d = data();
   const key = String(round);
-  const item = { round, text: parsed.body, lines: parsed.lines, at: Date.now() };
+  const item = { round, text: parsed.body, lines: parsed.lines, at: Date.now(), msgId: msgId === undefined ? null : msgId };
   const i = d.events.findIndex((e) => String(e.round) === key);
   if (i >= 0) d.events[i] = item; else d.events.push(item);
   d.events.sort((a, b) => a.round - b.round);
   if (d.events.length > 400) d.events = d.events.slice(-400);
   return d.events.length;
+}
+
+/** 【回滚用】删掉某一楼写出来的小总结（重新生成 / 删楼时调 ✓ 不然被删剧情的"小总结"会继续发给 AI ✗） */
+export function removeByMsgId(msgId) {
+  if (msgId === undefined || msgId === null) return 0;
+  const d = data();
+  const before = d.events.length;
+  d.events = d.events.filter((e) => String(e.msgId ?? '') !== String(msgId));
+  return before - d.events.length;
+}
+
+/** 【回滚用】按轮次删（没记 msgId 的老数据靠它兜底 ✓） */
+export function dropRound(round) {
+  const d = data();
+  const before = d.events.length;
+  d.events = d.events.filter((e) => Number(e.round) !== Number(round));
+  return before - d.events.length;
+}
+
+/** 【回滚用】删楼层后把事件的 msgId 从旧下标重映射到新下标（不在映射里的=这层被删了 → 丢掉 ✓） */
+export function remapMsgIds(map) {
+  if (!(map instanceof Map)) return { updated: 0, removed: 0 };
+  const d = data();
+  let updated = 0; let removed = 0;
+  const kept = [];
+  for (const e of (Array.isArray(d.events) ? d.events : [])) {
+    const id = Number(e.msgId);
+    if (!Number.isFinite(id)) { kept.push(e); continue; }
+    if (map.has(id)) { if (e.msgId !== map.get(id)) { e.msgId = map.get(id); updated++; } kept.push(e); }
+    else { removed++; }
+  }
+  d.events = kept;
+  return { updated, removed };
+}
+
+/** 【回滚用】整库清空（删掉唯一那楼 / 清空数据时调 ✓） */
+export function clearAll() {
+  const d = data();
+  const n = (d.events ?? []).length;
+  d.events = [];
+  return n;
 }
 
 /** 取本轮事件（最近的排后面） */
@@ -169,11 +214,13 @@ export function applyBigToTable(items, round = currentRound()) {
   return { ok: true, added, round };
 }
 
-/** 一轮维护总入口：解析小总结 → 落库 → 算大总结提醒 */
-export function maintain(text, roundOverride = null) {
+/** 一轮维护总入口：解析小总结 → 落库 → 算大总结提醒
+ *  【修 bug】以前这个函数**从来没被调用过** ✗ → 小总结压根没存 ✓
+ *  现在由 index.js 在处理完一轮 AI 正文后调用（传 msgId ✓ 方便回滚清掉 ✓） */
+export function maintain(text, roundOverride = null, msgId = null) {
   const parsed = parseSmall(text);
   const round = Number.isFinite(Number(roundOverride)) && roundOverride !== null ? Number(roundOverride) : currentRound();
-  if (parsed.found) recordSmall(round, parsed);
+  if (parsed.found) recordSmall(round, parsed, msgId);
   const big = reminder(round);
   try {
     const c = ctx();

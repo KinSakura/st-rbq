@@ -74,6 +74,8 @@ export function matchInColumn(rows, colIndex, ref, opts = {}) {
  * @returns {{index:number, value:string, level:string, ambiguous:boolean, candidates:Array, matchedColumns:string[]}|null}
  */
 export function matchRow(no, rows, ref, { maxDistance = 2 } = {}) {
+  /* 【回滚 · 审计员这条说错了】JS 默认参数只对 `undefined` 生效 ✓ 对显式传的 `0` **不生效** ✓
+     所以原来这个写法本来就对（传 0 = 关掉模糊匹配 ✓）✗ 我改成 opts 是多此一举 ✓ 已还原 ✓ */
   const t = getTable(no);
   if (!t || !rows?.length || ref == null || ref === '') return null;
 

@@ -13,7 +13,7 @@
  */
 
 import * as store from '../../core/store.js';
-import { getTable } from '../../core/schema.js';
+import { getTable, getTables } from '../../core/schema.js';
 import { resolveAttr } from '../../core/alias.js';
 
 const rows = (no) => store.getRows(no, { create: false });
@@ -137,7 +137,8 @@ export function renderDashboard(host, api) {
   const compass = el('button', { class: 'rbq-compass', title: '切换视图' }, [el('span', { text: '✦' })]);
   const compassMenu = el('div', { class: 'rbq-compass-menu' });
   // 版本号放菜单顶部（菜单每次打开都会重建，不会像标题那样被覆盖）
-  compassMenu.appendChild(el('div', { class: 'rbq-ver-head', text: 'RBQ v2.9.6' }));
+  /* ⚠️ 发版时这个版本号必须和 manifest.json 一致 ✓（smoke-test 里有"版本号一致性"用例守着 ✓） */
+  compassMenu.appendChild(el('div', { class: 'rbq-ver-head', text: 'RBQ v2.11.0' }));
   for (const [key, label] of api.views) {
     const item = el('button', {
       class: `rbq-compass-item${api.currentView === key ? ' rbq-active' : ''}`,

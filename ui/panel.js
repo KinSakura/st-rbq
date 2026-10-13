@@ -58,7 +58,10 @@ function el(tag, attrs = {}, children = []) {
   for (const [k, v] of Object.entries(attrs)) {
     if (k === 'class') node.className = v;
     else if (k === 'html') node.innerHTML = v;
-    else if (k === 'text') { const s0 = String(v == null ? '' : v).replace(/\b(null|undefined|nullnull)\b/g, '').trim(); if (s0) node.textContent = s0; }   // 去掉 null/undefined（详情里曾出现 nullnull）
+    else if (k === 'text') { /* 【审计修】以前用词边界正则全局删 null/undefined ✗ → 表格里真写"null"也会被吃掉 ✓
+       现在只在整个值就是它时才当空值 ✓ */
+      const raw0 = String(v == null ? '' : v);
+      const s0 = /^\s*(null|undefined|nullnull)\s*$/i.test(raw0) ? '' : raw0.trim(); if (s0) node.textContent = s0; }   // 去掉 null/undefined（详情里曾出现 nullnull）
     else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2), v);
     else if (v != null && v !== false) node.setAttribute(k, v === true ? '' : String(v));
   }
@@ -109,7 +112,7 @@ function buildPanel() {
   const header = el('div', { class: 'rbq-header' }, [
     el('span', { class: 'rbq-drag-handle', text: '⠿', title: '按住拖动面板', style: 'cursor:move;opacity:.6;margin-right:6px;user-select:none' }),
     el('div', { class: 'rbq-title', html: '📊 RBQ 数据库 <small class="rbq-sub"></small>' }),
-      el('span', { class: 'rbq-ver-badge', text: 'v2.9.7' }),
+      el('span', { class: 'rbq-ver-badge', text: 'v2.11.0' }),
     el('button', { class: 'rbq-btn rbq-icon', title: '刷新', onclick: () => render() }, '⟳'),
     el('button', { class: 'rbq-btn rbq-icon', title: '收起', onclick: () => hidePanel() }, '✕'),
   ]);
@@ -605,7 +608,7 @@ function renderViewsPane() {
     renderViewport: (key, el2) => renderViewportInto(key, el2),
   };
 
-  import('./views/dashboard.js?v=2970')
+  import('./views/dashboard.js?v=21100')
     .then((m) => m.renderDashboard(host, api))
     .catch((e) => {
       host.textContent = '';
@@ -621,7 +624,7 @@ function renderViewsPane() {
     const panel = el('div', { class: 'rbq-cc-panel' });
     overlay.appendChild(panel);
     pane.appendChild(overlay);
-    import('./views/characterCard.js?v=2970')
+    import('./views/characterCard.js?v=21100')
       .then((m) => m.renderCharacterCard(panel, state.card, {
         el,
         onClose: () => { state.card = null; render(); },
@@ -706,20 +709,20 @@ function __renderViewportInto(key, hostEl) {
     hostEl.textContent = '';
     hostEl.appendChild(el('div', { class: 'rbq-empty', text: `加载失败：${e?.message ?? e}` }));
   };
-  if (key === 'extras') return import('./views/extrasLines.js?v=2970').then((m) => m.renderExtras(hostEl, sub));
-  if (key === 'relations') return import('./views/relations.js?v=2970').then((m) => m.renderRelations(hostEl, sub));
-  if (key === 'map') return import('./views/map.js?v=2970').then((m) => m.renderMap(hostEl, sub));
+  if (key === 'extras') return import('./views/extrasLines.js?v=21100').then((m) => m.renderExtras(hostEl, sub));
+  if (key === 'relations') return import('./views/relations.js?v=21100').then((m) => m.renderRelations(hostEl, sub));
+  if (key === 'map') return import('./views/map.js?v=21100').then((m) => m.renderMap(hostEl, sub));
   if (key === 'inventory' || key === 'equipment') {
-    return import('./views/inventory.js?v=2970').then((m) => (key === 'inventory' ? m.renderInventory(hostEl, sub) : m.renderEquipment(hostEl, sub)));
+    return import('./views/inventory.js?v=21100').then((m) => (key === 'inventory' ? m.renderInventory(hostEl, sub) : m.renderEquipment(hostEl, sub)));
   }
   if (GRAPH_VIEWS.has(key)) {
-    return import('./views/graphs.js?v=2970').then((m) => {
+    return import('./views/graphs.js?v=21100').then((m) => {
       const map = { quests: m.renderQuestBoard, skills: m.renderSkillWheel, monsters: m.renderThreats, factions: m.renderFactionWeb, chronicle: m.renderEraTimeline };
       (map[key] ?? m.renderQuestBoard)(hostEl, sub);
     }).catch(fail);
   }
   if (PANEL_VIEWS.has(key)) {
-    return import('./views/panels.js?v=2970').then((m) => {
+    return import('./views/panels.js?v=21100').then((m) => {
       const hit = m.PANELS.find(([k]) => k === key);
       if (!hit) { hostEl.textContent = ''; hostEl.appendChild(el('div', { class: 'rbq-empty', text: `没有名为 ${key} 的视图` })); return; }
       hit[2](hostEl, sub);
@@ -1667,7 +1670,7 @@ function renderDeparturePane() {
   ]);
   const mtRow = el('div', { class: 'rbq-row' }, [el('span', { class: 'rbq-hint', text: '阈值（轮）', style: 'min-width:76px' })]);
   const mi = el('input', { class: 'rbq-input', type: 'number', value: String(departure.MonsterDespawn.getThreshold()), style: 'width:90px' });
-  mi.addEventListener('change', () => { departure.MonsterDespawn.setThreshold(mi.value); der(); });
+  mi.addEventListener('change', () => { departure.MonsterDespawn.setThreshold(mi.value); render(); });
   mtRow.appendChild(mi);
   mtRow.appendChild(el('span', { class: 'rbq-hint', text: '表里共 ' + departure.MonsterDespawn.all().length + ' 条' }));
   monCard.appendChild(mtRow);
@@ -1898,6 +1901,10 @@ function attachSettingsExtras() {
       text: '仓库：' + (st.repo || updater.REPO_URL)
         + (st.source ? ('　本次用的源：' + String(st.source).replace(/^https?:\/\//, '').slice(0, 46)) : ''),
     }));
+    /* 【补回】把每个更新源报的版本都列出来 ✓ 一眼看出是哪个源还没刷新 ✓ */
+    if (Array.isArray(st.sources) && st.sources.length) {
+      upd.appendChild(el('div', { class: 'rbq-hint', text: '各源版本：' + st.sources.join(' ｜ ') }));
+    }
   } catch (e) { /* ignore */ }
   upd.appendChild(el('div', { class: 'rbq-row' }, [
     el('button', { class: 'rbq-btn rbq-primary', text: '检查更新', onclick: async () => { const s2 = await updater.check({ force: true }); notify(s2.hasUpdate ? 'success' : 'info', s2.hasUpdate ? ('有新版本 ' + s2.latest) : (s2.error ? ('检查失败：' + s2.error) : '已是最新')); render(); } }),
@@ -1909,6 +1916,27 @@ function attachSettingsExtras() {
 
   const pi = el('div', { class: 'rbq-card', 'data-rbq-pi': '1' }, [
     el('h4', { text: '一键导入预设' }),
+    /* 【用户反馈 · 反复提醒预设更新】以前这卡片没法"停止提示" ✗ → 加两个按钮 ✓ */
+    el('div', { class: 'rbq-row' }, [
+      el('button', {
+        class: 'rbq-btn rbq-btn-sm', text: '检查我在用的是不是内置那份',
+        onclick: async () => {
+          try {
+            const r = await presetImport.detectAlreadyImported();
+            notify(r.same ? 'success' : 'info', r.same ? '一致 ✓ 已标记为已导入，不会再提示这条 ✓' : '不一致（你现在用的是自己那份）→ 若不想再被提示，点右边那个 ✓');
+          } catch (e) { notify('warning', '检查失败：' + (e && e.message)); }
+          render();
+        },
+      }),
+      el('button', {
+        class: 'rbq-btn rbq-btn-sm', text: '不再提示预设更新',
+        title: '把内置预设/世界书的当前版本记为已导入，顶部那个 ⬆ 预设 胶囊就会消失',
+        onclick: () => {
+          try { const ks = presetImport.markAllImported(); notify('success', '已记为最新，不再提示：' + ks.join('、')); } catch (e) { notify('warning', '失败：' + (e && e.message)); }
+          render();
+        },
+      }),
+    ]),
   ]);
   try { if (!__piManifestLoaded) { __piManifestLoaded = true; presetImport.loadManifest().then(() => render()).catch(() => { /* 用兜底清单 */ }); } } catch { /* ignore */ }
   for (const e of presetImport.list()) {
@@ -2295,7 +2323,7 @@ function renderSettingsPane() {
         sel.addEventListener('change', () => {
           store.updateConfig({ inputButton: { placement: sel.value } });
           notify('info', '位置已切换，重新注入按钮…');
-          import('./inputButton.js?v=2970').then((m) => { m.stopInputButton(); m.startInputButtonInjection(); });
+          import('./inputButton.js?v=21100').then((m) => { m.stopInputButton(); m.startInputButtonInjection(); });
           render();
         });
         return sel;
@@ -2327,11 +2355,23 @@ function renderSettingsPane() {
     el('div', { class: 'rbq-row' }, [
       el('label', { text: '保留撤销轮数' }),
       (() => {
-        const inp = el('input', { class: 'rbq-input', type: 'number', min: '0', max: '200', value: String(cfg.dataProtocol.keepUndoRounds) });
+        const inp = el('input', { class: 'rbq-input', type: 'number', min: '1', max: '200', value: String(cfg.dataProtocol.keepUndoRounds) });
         inp.style.width = '70px';
-        inp.addEventListener('change', () => store.updateConfig({ dataProtocol: { keepUndoRounds: Number(inp.value) } }));
+        inp.addEventListener('change', () => store.updateConfig({ dataProtocol: { keepUndoRounds: Math.max(1, Number(inp.value) || 60) } }));
         return inp;
       })(),
+    ]),
+    /* 【审计修】快照层数以前不可配 ✗（键都不在默认配置里 ✓）→ 放出来 ✓
+       （超过这个层数的老楼层会被丢掉快照 → 只能靠版本链回滚 ✓ 所以值得让用户自己调 ✓） */
+    el('div', { class: 'rbq-row' }, [
+      el('label', { text: '保留快照层数' }),
+      (() => {
+        const inp = el('input', { class: 'rbq-input', type: 'number', min: '1', max: '500', value: String((cfg.dataProtocol && cfg.dataProtocol.keepSnapshots) || 60) });
+        inp.style.width = '70px';
+        inp.addEventListener('change', () => store.updateConfig({ dataProtocol: { keepSnapshots: Math.max(1, Number(inp.value) || 60) } }));
+        return inp;
+      })(),
+      el('span', { class: 'rbq-hint', text: '（精确回滚能覆盖最近多少层 ✓ 调大可回溯更远、聊天体积也更大 ✓）' }),
     ]),
 
 

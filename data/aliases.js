@@ -213,128 +213,140 @@ export default {
         "statPref"
       ]
     },
-    "3": {
+ "3": {
       "aliasToIndex": {
+        "looks": 5,
+        "face": 5,
+        "appearance_desc": 5,
+        "look": 5,
+        "容貌描述": 5,
+        "容貌": 5,
+        "外貌": 5,
+        "长相": 5,
+        "样貌": 5,
+        "面孔": 5,
+
         "name": 0,
         "gender": 1,
         "height": 2,
         "weight": 3,
         "measures": 4,
-        "overallFigure": 5,
-        "shoulderCollarbone": 6,
-        "chest": 7,
-        "waist": 8,
-        "hip": 9,
-        "hands": 10,
-        "legs": 11,
-        "feet": 12,
-        "hairColor": 13,
-        "hairStyle": 14,
-        "bodyHair": 15,
-        "scent": 16,
-        "sexExp": 17,
-        "meiki": 18,
-        "organ": 19,
-        "anus": 20,
-        "period": 21,
-        "painThreshold": 22,
-        "pleasureThreshold": 23,
-        "kink": 24,
-        "situationPref": 25,
-        "sexTaboo": 26,
-        "stamina": 27,
-        "exhaustion": 28,
-        "scar": 29
+        "overallFigure": 6,
+        "shoulderCollarbone": 7,
+        "chest": 8,
+        "waist": 9,
+        "hip": 10,
+        "hands": 11,
+        "legs": 12,
+        "feet": 13,
+        "hairColor": 14,
+        "hairStyle": 15,
+        "bodyHair": 16,
+        "scent": 17,
+        "sexExp": 18,
+        "meiki": 19,
+        "organ": 20,
+        "anus": 21,
+        "period": 22,
+        "painThreshold": 23,
+        "pleasureThreshold": 24,
+        "kink": 25,
+        "situationPref": 26,
+        "sexTaboo": 27,
+        "stamina": 28,
+        "exhaustion": 29,
+        "scar": 30
       },
       "indexToAliases": {
-        "0": [
+      "5": ["looks","face","appearance_desc","look","容貌描述","容貌","外貌","长相","样貌","面孔"],
+ "0": [
           "name"
         ],
-        "1": [
+ "1": [
           "gender"
         ],
-        "2": [
+ "2": [
           "height"
         ],
-        "3": [
+ "3": [
           "weight"
         ],
-        "4": [
+ "4": [
           "measures"
         ],
-        "5": [
+ "6": [
           "overallFigure"
         ],
-        "6": [
+ "7": [
           "shoulderCollarbone"
         ],
-        "7": [
+ "8": [
           "chest"
         ],
-        "8": [
+ "9": [
           "waist"
         ],
-        "9": [
+ "10": [
           "hip"
         ],
-        "10": [
+ "11": [
           "hands"
         ],
-        "11": [
+ "12": [
           "legs"
         ],
-        "12": [
+ "13": [
           "feet"
         ],
-        "13": [
+ "14": [
           "hairColor"
         ],
-        "14": [
+ "15": [
           "hairStyle"
         ],
-        "15": [
+ "16": [
           "bodyHair"
         ],
-        "16": [
+ "17": [
           "scent"
         ],
-        "17": [
+ "18": [
           "sexExp"
         ],
-        "18": [
+ "19": [
           "meiki"
         ],
-        "19": [
+ "20": [
           "organ"
         ],
-        "20": [
+ "21": [
           "anus"
         ],
-        "21": [
+ "22": [
           "period"
         ],
-        "22": [
+ "23": [
           "painThreshold"
         ],
-        "23": [
+ "24": [
           "pleasureThreshold"
         ],
-        "24": [
+ "25": [
           "kink"
         ],
-        "25": [
+ "26": [
           "situationPref"
         ],
-        "26": [
+ "27": [
           "sexTaboo"
         ],
-        "27": [
+ "28": [
           "stamina"
         ],
-        "28": [
+ "29": [
           "exhaustion"
         ],
-        "29": [
+ "30": [
           "scar"
         ]
       },

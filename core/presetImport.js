@@ -156,3 +156,69 @@ export async function importOne(entry, opts = {}) {
     return { ok: false, error: msg };
   }
 }
+
+/**
+ * 【用户反馈 · 反复提醒预设更新】✓
+ *   问题：胶囊 ⬆ 预设 按"内置版本 ≠ 上次用我们导入的版本"判断 ✓
+ *         而如果用户是用【自己那份预设】（没走我们的导入 ✓）→ 版本永远对不上
+ *         → 这个胶囊就会【一直挂在那儿】✗ 看起来就是"反复提醒"✓
+ *   修法（两层）：
+ *     ① detectAlreadyImported()：启动时比一下"你现在实际在用的预设"和"内置那份"是不是同一套
+ *        （比提示词【条数 + 名字集合 + 启停状态】✓ 够稳且很便宜 ✓）
+ *        是同一套 → 直接记下版本 ✓ 胶囊消失 ✓
+ *     ② markAllImported()：给用户一个明确的"不再提示"按钮 ✓
+ */
+function realPrompts() {
+  return (async () => {
+    try {
+      const m = await import('/scripts/openai.js');
+      const s = m?.oai_settings;
+      return Array.isArray(s?.prompts) ? s.prompts : [];
+    } catch (e) { return []; }
+  })();
+}
+
+function signature(list) {
+  return list
+    .filter((p) => p && p.marker !== true)
+    .map((p) => String(p.name ?? p.identifier ?? '').trim() + '|' + (p.enabled === false ? '0' : '1'))
+    .sort()
+    .join('\n');
+}
+
+/**
+ * 看看"当前在用的预设"是不是就是内置那份 ✓
+ * @returns {Promise<{same:boolean, key:string}>}
+ */
+export async function detectAlreadyImported() {
+  try {
+    const items = list();
+    const cur = await realPrompts();
+    if (!cur.length) return { same: false, key: '' };
+    const curSig = signature(cur);
+    for (const e of items) {
+      if (e.kind !== 'preset') continue;
+      try {
+        const data = await fetchJson(e.file);
+        const bundled = Array.isArray(data?.prompts) ? data.prompts : [];
+        if (!bundled.length) continue;
+        if (signature(bundled) !== curSig) continue;
+        /* 是同一套 → 记下版本 ✓ 以后就不会再提示这条了 ✓ */
+        rememberVersion(e);
+        console.log('[RBQ] 检测到当前预设与内置「' + e.label + '」一致（v' + e.version + '）→ 已标记为已导入，不再提示 ✓');
+        return { same: true, key: e.key };
+      } catch (err) { /* 单个读不到就跳过 ✓ */ }
+    }
+    return { same: false, key: '' };
+  } catch (e) { return { same: false, key: '' }; }
+}
+
+/** 把内置清单里所有条目的当前版本都记为"已导入"（按钮用 ✓ = 别再提示了 ✓） */
+export function markAllImported() {
+  const out = [];
+  for (const e of list()) {
+    rememberVersion(e);
+    out.push(e.key + '@' + e.version);
+  }
+  return out;
+}

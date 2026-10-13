@@ -88,6 +88,8 @@ export function renderCharacterCard(host, name, api) {
   const gender = get(3, p3, '性别');
   const age = get(2, p2, '年龄') || get(2, p2, '生理年龄') || get(3, p3, '生理年龄');   // 年龄在表2（以前错读表3 的「生理年龄」→ 永远空 → 卡片第三项显示成了身高）
   const height = get(3, p3, '身高');
+  /* 【用户要求】表3 新增「容貌描述」→ 角色卡要显示出来 ✓（剧情里靠它区分不同角色 ✓） */
+  const looks = get(3, p3, '容貌描述') || get(3, p3, '外貌') || get(3, p3, '容貌');
   const hp = num(get(13, p13, 'HP(当前)')); const mhp = num(get(13, p13, 'HP(上限)'));
   const mp = num(get(13, p13, 'MP(当前)')); const mmp = num(get(13, p13, 'MP(上限)'));
   const sp = num(get(13, p13, 'SP(当前)')); const msp = num(get(13, p13, 'SP(上限)'));
@@ -119,6 +121,7 @@ export function renderCharacterCard(host, name, api) {
         [race, gender, age ? `${age} 岁` : ''].filter(Boolean).join(' · ') || '—',   // 用户要求：年龄后面不要身高
       ]),
       job ? el('div', { class: 'rbq-cc-job', text: job }) : null,
+      looks ? el('div', { class: 'rbq-cc-look', text: looks, title: '容貌描述（表3）' }) : null,
     ]),
     el('button', {
       class: 'rbq-icon-btn', text: '✕', title: '关闭',

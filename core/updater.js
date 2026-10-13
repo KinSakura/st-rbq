@@ -96,6 +96,7 @@ export function isNewer(a, b) {
 const state = {
   checked: false,
   source: '',
+  sources: [],
   checking: false,
   latest: '',
   error: '',
@@ -121,6 +122,7 @@ export function status() {
     sourceUrl: c.sourceUrl,
     downloadUrl: c.downloadUrl || DEF.downloadUrl,
     source: state.source || '',
+    sources: state.sources || [],
     repo: REPO_URL,
   };
 }
@@ -143,20 +145,30 @@ function versionFromJson(j) {
   return String(j?.version ?? j?.Version ?? '').trim();
 }
 
-/** 按顺序试多个源，第一个成功的就算 ✓（返回用过的源地址 ✓） */
+/**
+ * 【用户实测】仓库明明已经更新了 ✗ 插件却说"已是最新" —— 因为 jsDelivr 有缓存 ✗
+ *   （它按 @main 缓存，几分钟到几小时才刷 ✓）
+ *   修法：**多个源并行查** ✓ 取里面**版本号最高**的那个 ✓
+ *   （任何源报了更新的版本就算有更新 ✓ 不再受单个源缓存影响 ✓）
+ * @returns {Promise<{version:string, source:string, all:Array}>}
+ */
 async function fetchLatest(sources) {
-  const errs = [];
-  for (const url of sources) {
+  const results = await Promise.all(sources.map(async (url) => {
     try {
-      const res = await fetch(url, { cache: 'no-store' });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
       const j = await res.json();
       const v = versionFromJson(j);
-      if (!v) throw new Error('没有 version 字段');
-      return { version: v, source: url };
-    } catch (e) { errs.push(String(url).replace(/^https?:\/\//, '').slice(0, 28) + ':' + String(e?.message ?? e).slice(0, 24)); }
-  }
-  throw new Error(errs.join(' | ') || '全部更新源都失败');
+      if (!v) throw new Error("没有 version 字段");
+      return { url, version: v, ok: true };
+    } catch (e) { return { url, version: "", ok: false, err: String(e?.message ?? e).slice(0, 40) }; }
+  }));
+  const good = results.filter((x) => x.ok);
+  if (!good.length) throw new Error(results.map((x) => String(x.url).replace(/^https?:\/\//, "").slice(0, 26) + ":" + (x.err || "")).join(" | ") || "全部更新源都失败");
+  /* 取最高版本 ✓ */
+  let best = good[0];
+  for (const x of good) { if (isNewer(x.version, best.version)) best = x; }
+  return { version: best.version, source: best.url, all: good.map((x) => String(x.url).replace(/^https?:\/\//, "").slice(0, 30) + "=" + x.version) };
 }
 
 /**
@@ -178,6 +190,8 @@ export async function check({ force = false } = {}) {
     const r = await fetchLatest(sources);
     state.latest = r.version;
     state.source = r.source;
+    state.sources = r.all || [];
+    try { console.log('[RBQ] 各更新源：' + (r.all || []).join(' ｜ ')); } catch (e) { /* ignore */ }
     state.downloadUrl = String(c.downloadUrl || DEF.downloadUrl || '').trim();
   } catch (e) {
     state.error = String(e?.message ?? e);

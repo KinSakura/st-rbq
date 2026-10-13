@@ -30,3 +30,14 @@ let abortRequested = false;
 export function requestAbort() { abortRequested = true; try { console.log('[RBQ] 已记录「用户中止」标志：后续任务与写入都会停下'); } catch (e) { /* ignore */ } }
 export function isAbortRequested() { return abortRequested; }
 export function clearAbort() { abortRequested = false; }
+
+/*
+ * 【审计修 · 写库计数器】
+ *   侧路任务是"调 API → 解析 → 写库"一条龙 ✓ 而重试机制包住了整条 ✓
+ *   → 如果失败发生在【写库成功之后】（例如进度回调抛错 ✗）
+ *     重试会把同样的 ops 再写一遍 → 重复建行 + 再叠一个 60 秒收口定时器 ✗
+ *   用法：写库处 bumpWriteCount() ✓ 重试前对比计数 ✓ 变了就不再重试 ✓
+ */
+let writeCount = 0;
+export function bumpWriteCount() { writeCount += 1; }
+export function getWriteCount() { return writeCount; }

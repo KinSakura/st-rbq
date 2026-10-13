@@ -20,6 +20,8 @@ export const DROP_BLOCKS = [
   'aside', 'cg', 'zilla', 'narration',
   'status_bar', 'state', 'vars', 'variables', 'prompt', 'instructions', 'summary', 'epoch',
   'formatofmemorandum', 'memorandum',
+  /* 【用户预设实测】这些块名也在用（预设自己的正则产出的）→ 一并当元信息丢掉 ✓ */
+  'history', 'last_brain_control', 'brain_control', 'rp_options_block', 'timestamp',
 ];
 
 /**
@@ -65,10 +67,34 @@ function dropTimeBox(text) {
 /** 取正文 */
 export function extractProse(raw) {
   let s = String(raw ?? '');
+  /* 【用户实测】提示词里还能看到标签 ✗ —— 其中一类是 HTML 注释块（<!-- … -->）
+     它不以字母开头，前面几段正则都匹配不到 ✗ → 这里先专门清掉 ✓ */
+  s = s.replace(/<!--[\s\S]*?-->/g, '');
   s = dropBlocks(s);
   s = dropTimeBox(s);
   // 行内残留的孤立标签（保留内容已在上一步处理，这里清掉漏网的）
   s = s.replace(/<\/?[a-zA-Z_][\w:-]*\b[^>]*>/g, '');
   s = s.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  return s;
+}
+
+/**
+ * 【用户要求】给侧路的正文：**把所有被标签包裹的内容都剔除** ✓
+ *   理由（用户原话）："只有正文是不被包裹的" ✓
+ *   → 不管标签叫什么名字，只要成对包裹 → 整块丢掉 ✓
+ *   → 剩下的孤立标签、注释、时间框也一并去掉 ✓
+ *   比 extractProse 更狠：不再"保留不认识标签里的字" ✗
+ */
+export function extractProseStrict(raw) {
+  let s = String(raw ?? "");
+  s = s.replace(/<!--[\s\S]*?-->/g, "");                 // 注释
+  /* 成对标签：整块丢弃（含内容）—— 用"先找开标签再找它自己的闭标签"的方式 ✓ */
+  s = s.replace(/<([a-zA-Z_][\w:-]*)(?:"[^"]*"|'[^']*'|[^>"'])*>[\s\S]*?<\/\1\s*>/g, "");
+  /* 未闭合的开标签：从这里一直吞到下一个标签或结尾 ✓ */
+  s = s.replace(/<([a-zA-Z_][\w:-]*)(?:"[^"]*"|'[^']*'|[^>"'])*>[\s\S]*?(?=<[a-zA-Z_\/]|$)/g, "");
+  /* 自闭合 / 孤立标签 */
+  s = s.replace(/<\/?[a-zA-Z_][\w:-]*\b[^>]*\/?>/g, "");
+  s = dropTimeBox(s);
+  s = s.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
   return s;
 }

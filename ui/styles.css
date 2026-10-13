@@ -2400,6 +2400,18 @@ div:has(> .rbq-web-detail) > .rbq-web-detail{align-self:stretch;height:auto}
 #toast-container > div .toast-message, #toast-container > .toast .toast-message { color: #e8e2d6 !important; }
 #toast-container > div .toast-progress, #toast-container > .toast .toast-progress { background: var(--rbq-gold, #d9a441) !important; opacity: .5 !important; }
 
+/* 【用户要求】角色卡上的「容貌描述」（表3 新增列 ✓）—— 让每个角色一眼能区分开 ✓ */
+#rbq-panel .rbq-cc-look {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--rbq-text-dim, #a9a29a);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 /* 【用户要求】角色坞头像一圈分三段：HP 红 / MP 蓝 / SP 金 ✓（各自按百分比填充 ✓） */
 #rbq-panel .rbq-hud-3ring .rbq-ring-bg { stroke: rgba(255,255,255,.10); }
 #rbq-panel .rbq-hud-3ring .rbq-ring-hp { stroke: #e0555c; }

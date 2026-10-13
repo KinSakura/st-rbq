@@ -381,6 +381,26 @@ export function insertTimeBox(text, { force = false } = {}) {
   return `${head}${head && !/\n$/.test(head) ? '\n' : ''}${box}\n${tail.replace(/^\n+/, '')}`;
 }
 
+/**
+ * 单独取"当前时间框文字"（就是『时间 - 地点 - 天气 - 氛围』那一串 ✓）
+ *   【用户要求】记忆条目上要显示这个 ✓ 而且**跟时间框一模一样** ✓
+ *   所以直接复用 timeBox 的模板 + 表0 取值逻辑 ✓（不重复实现一套 ✓）
+ *   ⚠️ 不受"时间框功能开关"影响 ✓（时间框关着也照样能取 ✓）
+ */
+export function timeBoxText() {
+  const e = get('timeBox');
+  const was = e.enabled;
+  try {
+    e.enabled = true;
+    const t = buildText('timeBox');
+    if (!t || /\{/.test(t)) return '';
+    /* 表0 还没数据时会是『— - — - — - —』这种 ✗ → 这种不算有效时间 ✓ 返回空让界面走退路 ✓ */
+    const body = String(t).replace(/[『』\s\-—|｜/·]/g, '');
+    if (!body) return '';
+    return String(t).trim();
+  } finally { e.enabled = was; }
+}
+
 /** 给某条消息插时间框（写回消息） */
 export async function applyTimeBoxToMessage(index, { force = false } = {}) {
   const c = chat();

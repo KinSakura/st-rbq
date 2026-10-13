@@ -288,9 +288,19 @@ export async function call(prompt, { system = '', extras = null, task = 'fill', 
         { role: 'assistant', content: THOUGHT_PREFILL },   // 预填思考开头，逼模型进入填表模式（参考 xingv2.6）
       ],
     };
+    /* 【审计发现】以前只在"调用方没给 signal"时才建 AbortController ✗
+       → 真实链路一直传 ac.signal → onTimeout 里的 ctrl?.abort() 是空操作 ✗
+       → 超时只 reject 不断开 → 槽位提前释放、并发上限被击穿 + 请求泄漏 ✓
+       现在：无论有没有调用方 signal 都建一个 ✓ 并把两边串起来（任一中止都能断 ✓） */
     let ctrl = null;
     let sig = signal;
-    if (!sig && typeof AbortController === 'function') { ctrl = new AbortController(); sig = ctrl.signal; }
+    if (typeof AbortController === 'function') {
+      ctrl = new AbortController();
+      if (signal && typeof signal.addEventListener === 'function') {
+        try { if (signal.aborted) ctrl.abort(); else signal.addEventListener('abort', () => ctrl.abort(), { once: true }); } catch (e) { /* ignore */ }
+      }
+      sig = ctrl.signal;
+    }
     const res = await withTimeout(fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + c.key },

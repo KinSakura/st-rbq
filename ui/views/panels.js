@@ -132,7 +132,7 @@ export function renderQuests(host, api) {
     const list = filter === 'all' ? rows : (buckets[filter] ?? []);
     try { grid.textContent = ''; } catch (e) { /* ignore */ }
     if (!list.length) { grid.appendChild(el('div', { class: 'rbq-empty', text: '这个分类下没有任务' })); return; }
-    for (const r of list) {
+    {   /* 【审计修】这里重复写了一层同款 for → 卡片数会变成 N² ✗ 现在只保留内层一层 ✓ */
     for (const r of list) {
       const name = p.cell(r, '任务名称') || p.cell(r, '名称');
       const st = p.cell(r, '任务状态') || p.cell(r, '状态');
@@ -222,7 +222,7 @@ export function renderInventory(host, api) {
       .filter((r) => !keyword || `${p.cell(r, '物品名称')}${p.cell(r, '类别')}${p.cell(r, '备注与属性加成')}`.includes(keyword));
     try { grid.textContent = ''; } catch (e) { /* ignore */ }
     if (!list.length) { grid.appendChild(el('div', { class: 'rbq-empty', text: '没有符合条件的物品' })); return; }
-    for (const r of list) {
+    {   /* 【审计修】这里重复写了一层同款 for → 卡片数会变成 N² ✗ 现在只保留内层一层 ✓ */
     for (const r of list) {
       const name = p.cell(r, '物品名称') || p.cell(r, '名称');
       const cat = p.cell(r, '类别');
@@ -383,7 +383,7 @@ export function renderSkills(host, api) {
     })();
     try { grid.textContent = ''; } catch (e) { /* ignore */ }
     if (!list.length) { grid.appendChild(el('div', { class: 'rbq-empty', text: '这个角色没有匹配的技能' })); return; }
-    for (const r of list) {
+    {   /* 【审计修】这里重复写了一层同款 for → 卡片数会变成 N² ✗ 现在只保留内层一层 ✓ */
     for (const r of list) {
       const name = p.cell(r, '技能名称') || p.cell(r, '名称');
       const type = p.cell(r, '检定类型') || p.cell(r, '类型');
@@ -443,7 +443,7 @@ export function renderMonsters(host, api) {
     const list = rows.filter((r) => !hide || !/defeated|fled|despawned|已击败|已逃跑/.test(p.cell(r, '状态')));
     try { grid.textContent = ''; } catch (e) { /* ignore */ }
     if (!list.length) { grid.appendChild(el('div', { class: 'rbq-empty', text: '这个筛选下没有敌人' })); return; }
-    for (const r of list) {
+    {   /* 【审计修】这里重复写了一层同款 for → 卡片数会变成 N² ✗ 现在只保留内层一层 ✓ */
     for (const r of list) {
       const name = p.cell(r, '怪物名称') || p.cell(r, '实体名称') || p.cell(r, '名称');
       const st = p.cell(r, '状态');
@@ -615,7 +615,9 @@ export function renderMemory(host, api) {
         el('div', { class: 'rbq-mem-head' }, [
           el('span', { class: 'rbq-badge', text: `第 ${e.round} 轮` }),
           e.important ? el('span', { class: 'rbq-badge rbq-warn', text: '重要' }) : null,
-          el('span', { class: 'rbq-hint', text: new Date(e.at).toLocaleTimeString() }),
+          /* 【用户要求】这里显示「这一轮的表0时间框」✓ 跟时间框一模一样的格式 ✓
+             （不再显示真实时钟 ✗；老数据没这个字段时才退回真实时间 ✓） */
+          el('span', { class: 'rbq-hint', text: e.t ? String(e.t) : (Number.isFinite(Number(e.at)) ? new Date(Number(e.at)).toLocaleTimeString() : '（没有时间）'), title: e.t ? '这一轮的表0时间' : '旧数据（没有表0时间）' }),
           el('span', { class: 'rbq-spacer' }),
           el('button', {
             class: 'rbq-btn rbq-icon rbq-danger', text: '✕', title: '删除这条',

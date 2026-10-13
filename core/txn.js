@@ -258,6 +258,9 @@ export function resolveOps(ops, opts = {}) {
  * @param {boolean} [opts.dryRun]  只解析不写
  */
 export async function applyOps(ops, opts = {}) {
+  /* 【审计修】写库计数器 ✓ 侧路任务的重试靠它判断"上一次是不是已经写过库了" ✓
+     （写过就不重试 ✗ 否则会重复建行 + 再叠一个收口定时器 ✓） */
+  try { const fz0 = await import("./freeze.js"); fz0.bumpWriteCount?.(); } catch (e) { /* ignore */ }
   /* 【最低层硬拦】冻结期内除了白名单来源，一律不写表 ✓
      （只在上层入口加守卫靠不住 —— 实测总有漏的路径，比如 derived-recalc ✗） */
   try {

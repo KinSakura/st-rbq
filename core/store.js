@@ -41,6 +41,7 @@ export const DEFAULT_CONFIG = Object.freeze({
     fuzzyMatch: true,              // 主键/列名模糊匹配
     fuzzyMaxDistance: 2,
     keepUndoRounds: 20,            // 保留最近 N 轮撤销数据
+    keepSnapshots: 60,             // 【审计修】保留最近 N 层的 before/after 快照（以前这键不在默认配置 ✗ 设置页也改不了 ✗）
   },
   review: {
     enabled: true,
@@ -291,6 +292,33 @@ export function getTemplateSource() {
 }
 
 /** 本聊天专用 schema（只影响当前聊天；传 null 清除） */
+/**
+ * 【新增内置列 · 迁移】给"本聊天的 schema 覆盖"补上后来新增的内置列 ✓
+ *   为什么需要：老用户如果存过 schema 覆盖（本聊天/模板 ✓），新加的内置列不会自动出现 ✗
+ *   做法：只补**缺的那一列**，不动其它任何东西 ✓（放在指定列名之后 ✓ 位置也对 ✓）
+ * @returns {{added:number, columns:string[]}}
+ */
+export function ensureBuiltinColumns(no, colName, afterName = null) {
+  const out = { added: 0, columns: [] };
+  try {
+    const data = getData({ create: true });
+    const ov = data?.schemaOverride;
+    const tables = Array.isArray(ov?.tables) ? ov.tables : null;
+    if (!tables) return out;   // 没覆盖 → 走内置 schema ✓ 内置那份已经是新的 ✓
+    const t2 = tables.find((x) => Number(x.no) === Number(no));
+    if (!t2 || !Array.isArray(t2.columns)) return out;
+    const nameOf = (c) => (typeof c === 'string' ? c : String(c?.name ?? ''));
+    if (t2.columns.some((c) => nameOf(c) === colName)) return out;
+    const at = afterName ? t2.columns.findIndex((c) => nameOf(c) === afterName) : -1;
+    const idx = at >= 0 ? at + 1 : t2.columns.length;
+    t2.columns.splice(idx, 0, typeof t2.columns[0] === 'string' ? colName : { name: colName });
+    out.added = 1;
+    out.columns = t2.columns.map(nameOf);
+    console.log('[RBQ] 已给本聊天的表结构补上新列「' + colName + '」（第 ' + (idx + 1) + ' 列 ✓）');
+  } catch (e) { /* ignore */ }
+  return out;
+}
+
 export function setChatSchemaOverride(schema) {
   const data = getData({ create: true });
   data.schemaOverride = schema ? clone(schema) : null;
@@ -535,8 +563,11 @@ export function setRows(no, rows) {
   __auditWrite(no, "setRows直接写");
   const data = getData();
   const key = String(no);
+  /* 【审计修】以前直接存引用 ✗ → 调用方之后若再改那个数组，会连带改到仓库里的当前状态与哈希 ✓
+     这里深拷贝一份（快照/undo 本来就是 JSON 字符串、不受影响 ✓） */
+  const safe = (() => { try { return JSON.parse(JSON.stringify(rows ?? [])); } catch (e) { return rows ?? []; } })();
   data.tables[key] = {
-    rows: rows ?? [],
+    rows: safe,
     colsHash: getTable(no)?.signature ?? '',
     updatedRev: data.rev,
   };
@@ -665,6 +696,11 @@ export async function commit({ messageIndex, undo = {}, audit = [], ops = [], ro
       afterSnapshot: prev?.afterSnapshot,
       sideHash: prev?.sideHash,
       sideRound: prev?.sideRound,
+      /* 【回滚 · 审计员这条说错了】原写法 { ...prev.undo, ...undo }（**新值覆盖旧值**）是**对的** ✓
+         因为回滚是"从最新一层往旧一层逐层撤" ✓：
+           撤第 5 层时用第 5 层锚点的 undo = "第 5 层写之前的值" ✓
+           再撤第 4 层、第 3 层……每一步都对 ✓（我改成"保留最早"反而会把中间状态弄丢 ✗
+           实测：smoke 的「回滚到上一版」用例当场失败 ✓ 已还原 ✓） */
       undo: prev?.undo && Object.keys(prev.undo).length ? { ...prev.undo, ...undo } : undo,
       ops: ops.length ? ops : undefined,
       audit: audit.length ? audit : prev?.audit,
@@ -684,7 +720,9 @@ export async function commit({ messageIndex, undo = {}, audit = [], ops = [], ro
 /** 只保留最近 N 轮的撤销数据，防止聊天文件膨胀 */
 /** 只保留最近 N 楼的表格快照（不然聊天存档会越涨越大 ✗）—— 超出的楼层退回用版本号回滚 ✓ */
 export function pruneSnapshots() {
-  const keep = getConfigValue('dataProtocol.keepSnapshots', 60);
+  /* 【审计修】keep 要夹取 ✓ 以前配成 0 / 负数会让 `anchors.length <= keep` 恒假 ✗
+     → 把除末尾 |keep| 个之外的全部锚点的快照都删掉 ✗（等于把回滚能力清空 ✓） */
+  const keep = Math.max(1, Number(getConfigValue('dataProtocol.keepSnapshots', 60)) || 60);
   const anchors = listAnchors();
   if (anchors.length <= keep) return 0;
   let pruned = 0;
@@ -698,7 +736,8 @@ export function pruneSnapshots() {
 }
 
 export function pruneUndo() {
-  const keep = getConfigValue('dataProtocol.keepUndoRounds', 60);   // 20 → 60：频繁重新生成时需要更深的历史 ✓
+  /* 【审计修】keep 夹取 ✓（配成 0/负数会把所有锚点的 undo 全删光 ✗ → 版本链回滚失效 ✓） */
+  const keep = Math.max(1, Number(getConfigValue('dataProtocol.keepUndoRounds', 60)) || 60);   // 20 → 60：频繁重新生成时需要更深的历史 ✓
   const anchors = listAnchors();
   if (anchors.length <= keep) return 0;
   let pruned = 0;

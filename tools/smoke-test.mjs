@@ -78,9 +78,9 @@ const col = (no, name) => {
   if (!r) throw new Error(`列「${name}」不存在于表${no}`);
   return r.index;
 };
-check('15 张表 / 205 列', () => {
+check('15 张表 / 206 列', () => {
   eq(S.getTables().length, 15);
-  eq(S.getTables().reduce((n, t) => n + t.columns.length, 0), 205);
+  eq(S.getTables().reduce((n, t) => n + t.columns.length, 0), 206);   // 表3 新增「容貌描述」→ 205 + 1
 });
 check('单例表 = 表0 与表6', () => {
   ok(S.isSingleton(0) && S.isSingleton(6) && !S.isSingleton(2));
@@ -100,7 +100,11 @@ check('rbq.js 的别名与 schema 列一一对应', () => {
   eq(P.resolveAttr(2, 'race').index, 2);
   eq(P.resolveAttr(2, 'job').index, 3);
   eq(P.resolveAttr(2, 'level').index, 4);
-  eq(P.resolveAttr(3, 'meiki').index, 18);
+  /* 表3 在「三围」后插了「容貌描述」→ 之后的列下标全部 +1 ✓
+     （名器：18 → 19 ✓ 这一课就叫"插列必须同步别名表" ✓） */
+  eq(P.resolveAttr(3, 'meiki').index, 19);
+  eq(P.resolveAttr(3, 'looks').index, 5, '容貌别名应指向新列：');
+  eq(P.resolveAttr(3, '容貌').index, 5, '中文「容貌」也要认：');
   eq(P.resolveAttr(13, 'hp').index, 1);
 });
 
@@ -257,6 +261,34 @@ console.log('\n=== 7. 事务：数值增减 / 部分失败 / 撤销 ===');
   });
 }
 
+check('别名下标绝不错位（插列后必须同步别名表）', async () => {
+  const A = (await import('../data/aliases.js')).default;
+  const S = await import('../core/schema.js');
+  let over = 0;
+  for (const [no, block] of Object.entries(A.tableAliases || {})) {
+    const n = S.getColumns(Number(no)).length;
+    for (const [k, i] of Object.entries(block.aliasToIndex || {})) { if (Number(i) >= n) { over++; if (over < 4) console.log('      越界：表' + no + ' ' + k + ' → ' + i + '（共 ' + n + ' 列）'); } }
+  }
+  eq(over, 0, '所有别名下标都必须在列数范围内：');
+  /* 哨兵：容易因为插列而错位的几个 ✓ */
+  const m3 = A.tableAliases['3'].aliasToIndex;
+  const c3 = S.getColumns(3);
+  for (const [k, want] of [['meiki', '名器类型'], ['looks', '容貌描述'], ['measures', '三围'], ['overallFigure', '整体体型'], ['chest', '胸部']]) {
+    eq(c3[m3[k]], want, '表3 别名 ' + k + ' 应指向：');
+  }
+});
+
+check('写库计数器：applyOps 会让它涨，重试靠它避免重复写入', async () => {
+  const fz = await import('../core/freeze.js');
+  const T = await import('../core/txn.js');
+  const St = await import('../core/store.js');
+  ok(typeof fz.getWriteCount === 'function' && typeof fz.bumpWriteCount === 'function', 'freeze.js 应导出写库计数器');
+  const n0 = fz.getWriteCount();
+  await T.applyOps([{ op: 'upsert', table: 2, values: { 角色名称: '计数器测试' } }], { source: 'test' });
+  ok(fz.getWriteCount() > n0, 'applyOps 之后计数应增加：' + n0 + ' → ' + fz.getWriteCount());
+  await St.clearAllTables();
+});
+
 console.log('\n=== 8. 导出格式（必须与记忆增强表格插件逐字节兼容）===');
 check('导出结构 = {sheet_N:{uid,name,content}}', () => {
   const j = St.exportPluginJson();
@@ -408,6 +440,25 @@ await check('预设标记的顺序：同名标记按预设顺序，↑/↓ 交�
   ok(out.indexOf('【本体】') < out.indexOf('B1'), '所有放下面的都在本体之后');
 });
 
+await check('预设标记：order 里有信息但查不到这条 → 按开着（🔒 是明确意愿）', async () => {
+  const sp = await import('../core/sidePipeline.js');
+  const list = [
+    { identifier: 'x', name: '🔒↑ 标了但 order 里没有', content: '进来吧', enabled: false },
+  ];
+  const order = [{ character_id: '100001', order: [{ identifier: '别的', enabled: true }] }];
+  const r = sp.presetMarkedBlocks(list, order);
+  eq(r.below, '进来吧', 'order 没提到它时应视为开着：');
+});
+
+await check('侧路入口会再清洗一次正文（防调用方塞原始消息）', async () => {
+  const sp = await import('../core/sidePipeline.js');
+  const dirty = '<thinking_matrix>想</thinking_matrix>她推开窗。<This_round_events>事件</This_round_events><data>x</data>';
+  const out = sp.fillPrompt(dirty, { tables: [], round: 1 });
+  ok(!/thinking_matrix/i.test(out.split('正文：').pop() || out), '正文里不该再有 thinking_matrix ✗');
+  ok(!/This_round_events/i.test(out.split('正文：').pop() || out), '正文里不该再有 This_round_events ✗');
+  ok(out.includes('她推开窗'), '正文内容本身要保留 ✓');
+});
+
 await check('预设标记：开关以 prompt_order 为准（提示词自带的 enabled 可能过时）', async () => {
   const sp = await import('../core/sidePipeline.js');
   const list = [
@@ -445,6 +496,123 @@ await check('预设标记：不管预设写什么归属，一律当系统并进�
   eq(sp.presetExtras(fake).length, 0, '不该再按身份拆出单独消息：');
   ok(!b.above.includes('X'), '没标记的不该被带上：');
 });
+await check('记忆注入的格式：带字段名 + 时间框 + 角色 + 轮次', async () => {
+  const m = await import('../core/memory.js');
+  const e = { round: 3, t: '『溟历纪314年10月17日 22:45 - 旧溟港 - 小雨 - 港区』', fields: { 感知: '闻到铁锈味', 情绪: '警惕', 意图: '先验封条', 记忆锚点: '灰色铅封箱' }, raw: '原始整段' };
+  const s = m.line('苏越', e);
+  ok(s.includes('【苏越｜第3轮｜『'), '开头应带角色名 + 轮次 + 时间框：' + s.slice(0, 40));
+  ok(s.includes('【感知】闻到铁锈味'), '缺【感知】字段名：' + s);
+  ok(s.includes('【情绪】警惕'), '缺【情绪】字段名');
+  ok(s.includes('【意图】先验封条'), '缺【意图】字段名');
+  ok(s.includes('【记忆锚点】灰色铅封箱'), '缺【记忆锚点】字段名');
+  /* 没有字段的老数据 → 退回原始整段（不丢内容 ✓） */
+  const old = m.line('甲', { round: 1, fields: {}, raw: '老格式的记忆' });
+  ok(old.includes('老格式的记忆'), '没有字段时应退回原始文本');
+});
+
+await check('小总结落库：按轮次存一条 + 记录楼层 + 能按楼清掉', async () => {
+  const s = await import('../core/summary.js');
+  const NL = String.fromCharCode(10);
+  s.clearAll();
+  const msg = '<This_round_events>' + NL + '<history id="1" t="溟历纪314年" loc="旧溟港">' + NL + '【剧情压缩】：她推开门。' + NL + '</history>' + NL + '</This_round_events>';
+  const r = s.maintain(msg, 5, 88);
+  ok(r.small && r.small.found, '应该解析到小总结');
+  const list = s.listEvents({ limit: 5 });
+  eq(list.length, 1, '应存下 1 条：');
+  eq(list[0].round, 5, '轮次应记对：');
+  eq(String(list[0].msgId), '88', '应记下是哪一楼：');
+  ok(String(list[0].text).includes('剧情压缩'), '应保存整段文本（含时间地点）：');
+  /* 同一轮再写一次 → 覆盖，不新增 ✓ */
+  s.maintain(msg, 5, 88);
+  eq(s.listEvents({ limit: 5 }).length, 1, '同一轮应覆盖不新增：');
+  /* 按楼清掉 ✓（回滚 / 删楼用 ✓） */
+  eq(s.removeByMsgId(88), 1, '按楼应能删掉 1 条：');
+  eq(s.listEvents({ limit: 5 }).length, 0, '删后应为空：');
+  /* 注入文本 ✓ */
+  s.maintain(msg, 6, 89);
+  ok(s.recentText({ limit: 5 }).includes('最近几轮事件'), '应生成最近几轮事件文本');
+  s.clearAll();
+});
+
+await check('侧路所有任务都要清洗正文（不只记忆）', async () => {
+  const sp = await import('../core/sidePipeline.js');
+  const NL = String.fromCharCode(10);
+  const dirty = '<thinking_matrix>想</thinking_matrix>' + NL + '她推开窗。' + NL + '<This_round_events>事件</This_round_events>';
+  /* 走进正文的提示词都要干净 ✓（extras 用公开的 preview() 取 ✓ 内部 builder 没导出 ✓） */
+  for (const [name, fn] of [['fill', (t) => sp.fillPrompt(t, { round: 1 })], ['extras', (t) => sp.preview('extras', t, 1)]]) {
+    const out = fn(dirty);
+    ok(!/thinking_matrix/i.test(out), name + ' 的正文不该带 thinking_matrix ✗');
+    ok(!/This_round_events/i.test(out), name + ' 的正文不该带 This_round_events ✗');
+    ok(out.includes('她推开窗'), name + ' 应保留正文本身 ✓');
+  }
+});
+
+await check('删中间楼层：只撤销那一层（含增行 / 删行 / 改格）', async () => {
+  const dl = await import('../core/delta.js');
+  const st = await import('../core/store.js');
+  const snap = (rows) => JSON.stringify({ 2: { rows } });
+  const R = (name, hp) => [name, hp, '备'];
+  const cases = [
+    ['纯删一行', [R('A', '10'), R('B', '20'), R('C', '30')], [R('A', '10'), R('C', '30')]],
+    ['删一行 + 改两格', [R('A', '10'), R('B', '20'), R('C', '30')], [R('A', '15'), R('C', '35')]],
+    ['最前插一行 + 改一格', [R('A', '10'), R('B', '20')], [R('Z', '99'), R('A', '15'), R('B', '20')]],
+    ['删尾一行 + 改一格', [R('A', '10'), R('B', '20'), R('C', '30')], [R('A', '15'), R('B', '20')]],
+  ];
+  for (const [name, before, after] of cases) {
+    /* 把库置为"这一层写完之后"的状态 → 再撤销这一层 → 应与 before 一致 ✓ */
+    st.setRows(2, JSON.parse(JSON.stringify(after)));
+    /* 前置断言：写进去了才算测到东西 ✓（以前没有这条 → 假 store 不支持时用例会"假过" ✗） */
+    eq((st.getRows(2, { create: false }) ?? []).length, after.length, name + ' 前置：应能把 after 写进表2：');
+    await dl.revertFloorDelta(snap(before), snap(after));
+    const now = (st.getRows(2, { create: false }) ?? []).map((r) => [String(r?.[0] ?? ''), String(r?.[1] ?? '')]);
+    const want = before.map((r) => [r[0], r[1]]);
+    eq(JSON.stringify(now), JSON.stringify(want), name + ' 撤销后应与这一层之前一致：');
+  }
+});
+
+await check('版本号一致性：manifest / 入口 / 面板角标 / 罗盘菜单 / 全仓无残留', async () => {
+  const fs2 = await import('node:fs');
+  const path2 = await import('node:path');
+  const root = path2.resolve(path2.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..');
+  const m = JSON.parse(fs2.readFileSync(path2.join(root, 'manifest.json'), 'utf8'));
+  ok(Array.isArray(m.js) && m.js.length === 1, 'manifest.js 应只有一个入口：' + JSON.stringify(m.js));
+  ok(fs2.existsSync(path2.join(root, m.js[0])), '入口文件必须存在：' + m.js[0]);
+  const boot = fs2.readFileSync(path2.join(root, m.js[0]), 'utf8');
+  const q = String(m.version || '').replace(/\./g, '').replace(/(\d)(\d{3})$/, '$1$2');
+  ok(boot.includes('?v=' + q.slice(0, 4) + '0') || /\?v=\d+/.test(boot), '入口里应有 ?v= 版本戳：' + boot.trim());
+  const badge = /rbq-ver-badge[^)]*text: '([^']+)'/.exec(fs2.readFileSync(path2.join(root, 'ui/panel.js'), 'utf8'));
+  eq(badge && badge[1], 'v' + m.version, '面板角标应与 manifest 一致：');
+  const dash = /RBQ v(\d+\.\d+\.\d+)/.exec(fs2.readFileSync(path2.join(root, 'ui/views/dashboard.js'), 'utf8'));
+  eq(dash && ('v' + dash[1]), 'v' + m.version, '罗盘菜单里的版本号应与 manifest 一致：');
+  /* 全仓不应再出现别的版本号（防止发版时漏改 ✗ —— 罗盘那个就是漏改过 ✓） */
+  const stale = [];
+  const walk = (d) => {
+    for (const e of fs2.readdirSync(d, { withFileTypes: true })) {
+      const p2 = path2.join(d, e.name);
+      if (e.isDirectory()) { walk(p2); continue; }
+      if (!/\.(js|json)$/.test(e.name)) continue;
+      const s = fs2.readFileSync(p2, 'utf8');
+      for (const v of new Set(s.match(/v2\.\d+\.\d+/g) || [])) if (v !== 'v' + m.version) stale.push(path2.relative(root, p2) + ' → ' + v);
+    }
+  };
+  walk(root);
+  eq(stale.length, 0, '还有别的版本号没同步：' + stale.slice(0, 6).join('、'));
+});
+
+await check('内置预设清单：版本齐全 + 条目形状正确 + 文件真的在', async () => {
+  const fs2 = await import('node:fs');
+  const path2 = await import('node:path');
+  const root = path2.resolve(path2.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..');
+  const idx = JSON.parse(fs2.readFileSync(path2.join(root, 'presets/index.json'), 'utf8'));
+  const items = Array.isArray(idx.items) ? idx.items : [];
+  ok(items.length > 0, '内置清单不能为空');
+  for (const e of items) {
+    ok(!!e.key && !!e.file && !!e.version, '每条都要有 key/file/version：' + JSON.stringify(e));
+    ok(fs2.existsSync(path2.join(root, 'presets', e.file)), '清单里的文件必须存在：' + e.file);
+    ok(['preset', 'worldinfo'].includes(e.kind || 'preset'), 'kind 只能是 preset/worldinfo：' + e.kind);
+  }
+});
+
 /* ------------------------------------------------------------------ 收尾 */
 
 console.log(`\n──────────────────────────────────────────`);

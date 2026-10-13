@@ -19,6 +19,7 @@
 
 import { ctx } from './ctx.js';   // 需要读当前聊天（系统轮次、消息条数等）
 import * as store from './store.js';
+import { extractProse, extractProseStrict } from './prose.js';
 import * as extrasMod from './extras.js';
 import * as schema from './schema.js';
 import * as prompts from '../prompts/prompts.js';
@@ -186,7 +187,19 @@ const MUST_WRITE_HEAD = [
   "",
 ].join(String.fromCharCode(10));
 
-export function fillPrompt(text, cfg) {
+/**
+ * 【健壮性】调用方可能只传半个配置（例如只看预览的测试 ✓）→ 缺 prompts 时补上酒馆里的真配置 ✓
+ * 这样 fillPrompt/memoryPrompt/... 就不会因为 cfg.prompts 不存在而抛错 ✓
+ */
+function normCfg(cfg) {
+  if (cfg && cfg.prompts && typeof cfg.prompts === "object") return cfg;
+  try { const real = sideApi.config(); if (real && real.prompts) return Object.assign({}, real, cfg || {}); } catch (e) { /* ignore */ }
+  return cfg || {};
+}
+
+export function fillPrompt(rawText, cfg) {
+  cfg = normCfg(cfg);
+  const text = cleanInput(rawText);
   const guide = (() => {
     try {
       const guide = guideForExtractor(prompts.buildTablePromptGuide?.() ?? '');
@@ -236,20 +249,71 @@ export function fillPrompt(text, cfg) {
  *   → 所以这里：**优先用 prompt_order** ✓，没有对应条目时才退回提示词自带的 enabled ✓
  * @returns {Map<string,boolean>|null} identifier → 是否启用
  */
+/**
+ * 【用户实测】预设标记进来的内容里，宏是【原样】的 ✗：
+ *   {{roll 1d99999}} / {{getvar::AI_role}} / {{getglobalvar::userSpeakBanText}} …
+ *   → 这些是酒馆的宏，交给酒馆自己解析 ✓（ctx().substituteParams 是酒馆的官方入口 ✓）
+ *   解析不了的（酒馆没这个入口 / 宏不存在）就原样留着 ✓ 不会把内容弄丢 ✓
+ */
+/* 【用户实测 · 关键根因】ctx().oai_settings 是**克隆** ✗（prompts / prompt_order 都读不到 ✗）
+   → 所以预设标记只能靠运气读到（有时只读到一部分 ✗ —— 比如只读到 🔒↓、读不到 🔒↑ ✓）
+   修法：从 /scripts/openai.js 模块里拿**真对象** ✓ 它是 live 引用 ✓ 之后你怎么改预设它都会跟着变 ✓
+   （模块导入是异步的 ✗ → 启动时先 await 一次存起来 ✓ 之后同步函数直接用这个引用 ✓） */
+let __realOai = null;
+export async function initPresetSource() {
+  try {
+    const m = await import('/scripts/openai.js');
+    if (m?.oai_settings) { __realOai = m.oai_settings; console.log('[RBQ] 已拿到酒馆真实的 oai_settings（预设 ' + (Array.isArray(__realOai.prompts) ? __realOai.prompts.length : 0) + ' 条 / order ' + (Array.isArray(__realOai.prompt_order) ? __realOai.prompt_order.length : 0) + ' 份）'); }
+  } catch (e) { /* 拿不到就退回 ctx ✓ */ }
+  return !!__realOai;
+}
+function realOai() {
+  if (__realOai) return __realOai;
+  try { const c = ctx(); if (Array.isArray(c?.oai_settings?.prompts) || Array.isArray(c?.oai_settings?.prompt_order)) return c.oai_settings; } catch (e) { /* ignore */ }
+  return null;
+}
+
+function resolveMacros(text) {
+  const s = String(text ?? "");
+  if (!s.includes("{{")) return s;
+  try {
+    const c = ctx();
+    const fn = c?.substituteParams;
+    if (typeof fn === "function") { const out = fn(s); if (typeof out === "string" && out) return out; }
+  } catch (e) { /* ignore */ }
+  try {
+    const g = (typeof window !== "undefined" && window.substituteParams) ? window.substituteParams : null;
+    if (typeof g === "function") { const out = g(s); if (typeof out === "string" && out) return out; }
+  } catch (e) { /* ignore */ }
+  return s;
+}
+
 function promptOrderMap(orderOverride = null) {
   try {
-    const po = Array.isArray(orderOverride) ? orderOverride : ctx()?.oai_settings?.prompt_order;
+    const po = Array.isArray(orderOverride) ? orderOverride : (realOai()?.prompt_order ?? ctx()?.oai_settings?.prompt_order);
     if (!Array.isArray(po) || !po.length) return null;
     const c = ctx();
     const curAvatar = (() => { try { return (c?.characters ?? [])[c?.this_chid]?.avatar ?? null; } catch (e) { return null; } })();
     /* 优先当前角色那份 → 其次全局（酒馆里全局用的 id 是 100001 / 'global'）→ 再次第一条 ✓ */
-    const pick = (curAvatar && po.find((x) => String(x?.character_id) === String(curAvatar)))
-      ?? po.find((x) => String(x?.character_id) === '100001' || String(x?.character_id) === 'global')
-      ?? po[0];
+    /* 【用户实测】🔒↑ 那条明明开着却没进来 ✗ —— 说明"某一份 order"里没有它 ✗
+       （酒馆可同时存"全局一份 + 每个角色一份"，各份内容可能不一样）
+       → 所以不只看一份：当前角色的那份优先 ✓，其次全局 ✓，再其次**任何一份里出现过它**的 ✓
+       全都没提到 → 交给调用方退回提示词自带的 enabled ✓ */
     const m = new Map();
-    for (const e of (Array.isArray(pick?.order) ? pick.order : [])) {
-      if (e && e.identifier) m.set(String(e.identifier), e.enabled !== false);
-    }
+    const put = (list, onlyIfAbsent) => {
+      for (const e of (Array.isArray(list) ? list : [])) {
+        if (!e || !e.identifier) continue;
+        const k = String(e.identifier);
+        if (onlyIfAbsent && m.has(k)) continue;
+        m.set(k, e.enabled !== false);
+      }
+    };
+    const globalEntry = po.find((x) => String(x?.character_id) === '100001' || String(x?.character_id) === 'global');
+    const charEntry = curAvatar ? po.find((x) => String(x?.character_id) === String(curAvatar)) : null;
+    if (globalEntry) put(globalEntry.order, false);          // 全局打底 ✓
+    if (charEntry) put(charEntry.order, false);              // 当前角色覆盖全局 ✓（酒馆就是这个优先级）
+    for (const x of po) { if (x !== globalEntry && x !== charEntry) put(x.order, true); }   // 其余只补缺 ✓
+    try { globalThis.__rbqOrderReport = { 份数: po.length, 全局条数: globalEntry ? (globalEntry.order || []).length : 0, 当前角色: curAvatar, 当前角色条数: charEntry ? (charEntry.order || []).length : 0, 合并后: m.size }; } catch (e) { /* ignore */ }
     return m.size ? m : null;
   } catch (e) { return null; }
 }
@@ -277,7 +341,8 @@ export function presetMarkedBlocks(listOverride = null, orderOverride = null) {
     const MARK_UP = base + '↑';     // 放下面
     const c = ctx();
     const list = Array.isArray(listOverride) ? listOverride : (
-      c?.oai_settings?.prompts
+      realOai()?.prompts
+      ?? c?.oai_settings?.prompts
       ?? c?.chatCompletionSettings?.prompts
       ?? c?.oai_settings?.prompt_manager?.prompts
       ?? []);
@@ -291,15 +356,24 @@ export function presetMarkedBlocks(listOverride = null, orderOverride = null) {
       if (p?.marker === true) continue;               // 分隔符类提示词没有真内容 ✓
       /* 开关：prompt_order 说了算 ✓，它没有这条时才看提示词自己带的 enabled ✓ */
       const id = String(p?.identifier ?? '');
-      const fromOrder = ord && id ? ord.get(id) : undefined;
-      const on = (fromOrder === undefined) ? (p?.enabled !== false) : fromOrder;
-      if (!on) { seen.push('✗' + name + '（关着）'); continue; }
+      /* 【用户实测】🔒↑ 那条明明在 UI 里开着，却没进来 ✗
+         原因：它在【任何一份 prompt_order 里都查不到】✗ → 而我以前退回看提示词自带的
+               `enabled`（那是导出预设时的快照 ✗ 常常是 false）✗ → 被误跳过 ✗
+         现在：只要 order 里**明确说关着**才跳过 ✓；order 里没这条 → 按"开着"处理 ✓
+               （名字里写 🔒 本身就是你明确的意愿：要它发给侧路 ✓） */
+      /* 两段式判断 ✓（既尊重酒馆的开关，也不冤枉你标了 🔒 的条目）：
+         · 有 prompt_order 信息 且 里面明确说这条关着 → 跳过 ✓
+         · 有 prompt_order 信息 但里面根本没这条 → 按开着（你标了 🔒 就是明确要发 ✓）
+         · 完全没有 prompt_order 信息 → 退回提示词自带的 enabled ✓（老行为 ✓） */
+      const fromOrder = (ord && id) ? ord.get(id) : undefined;
+      const on = ord ? (fromOrder === undefined ? true : fromOrder) : (p?.enabled !== false);
+      if (!on) { seen.push('✗' + name + '（prompt_order 说关着）'); continue; }
       const content = String(p?.content ?? '').trim();
       if (!content) continue;
       /* 【用户要求】不管预设里那条提示词的「消息归属」是什么（系统 / 用户 / AI 助手），
          一律当【系统】处理 ✓ 并进侧路提示词正文 ✓（不再按身份拆成多条消息 ✗） */
-      if (name.includes(MARK_DOWN)) { above.push(content); seen.push('↑' + name); }
-      else { below.push(content); seen.push('↓' + name); }   // 含 🔒↑、或只写了 🔒 → 都放下面 ✓
+      if (name.includes(MARK_DOWN)) { above.push(resolveMacros(content)); seen.push('↑' + name); }
+      else { below.push(resolveMacros(content)); seen.push('↓' + name); }   // 含 🔒↑、或只写了 🔒 → 都放下面 ✓
     }
     if (seen.length) {
       console.log('[RBQ] 预设标记（开关以 prompt_order 为准）：' + seen.join(' ｜ '));
@@ -323,7 +397,26 @@ export function withPresetBlocks(core, listOverride = null) {
   if (below) parts.push(below);
   return parts.filter((x) => String(x ?? '').trim()).join('\n\n');
 }
-function memoryPrompt(text, cfg) {
+/**
+ * 【用户实测】发给侧路的「正文」里居然还带着整块 <thinking_matrix> 和 <This_round_events> ✗
+ *   → 说明调用方传进来的可能是【原始消息】而不是清洗过的正文 ✗
+ *   这里在侧路的最底层再兜一次清洗 ✓（幂等 ✓ 清过的再清一次也不会坏 ✓）
+ */
+function cleanInput(text) {
+  const s = String(text ?? "");
+  try {
+    const cleaned = extractProseStrict(s);
+    /* 【审计发现】以前抽空时把【原文】回传 ✗ → 被标签包裹的内容照样进提示词 ✓
+       现在：抽空就返回空串 ✓（宁可这轮没正文，也不把标签内容发出去 ✓）*/
+    if (cleaned && cleaned.trim().length >= 1) return cleaned;
+    console.warn('[RBQ] 这条消息几乎全是标签包裹的内容 → 侧路这一轮按空正文处理 ✓');
+    return '';
+  } catch (e) { return s; }
+}
+
+function memoryPrompt(rawText, cfg) {
+  cfg = normCfg(cfg);
+  const text = cleanInput(rawText);
   const cast = (() => {
     try {
       const names = extras.presentNames();
@@ -346,10 +439,12 @@ function epochSpec() {
 }
 
 function summaryPrompt(text, cfg, range) {
-  return String(cfg.prompts.summary ?? '')
+  cfg = normCfg(cfg);
+  /* 【审计修】预设标记（🔒↓ 上面 / 🔒↑ 下面）以前只有 fill/memory 生效 ✗ → 大总结也套上 ✓ */
+  return withPresetBlocks(String(cfg.prompts.summary ?? '')
     .replace(/\{表12写法\}/g, epochSpec())
     .replace(/\{范围\}/g, String(range ?? ''))
-    .replace(/\{正文\}/g, text);
+    .replace(/\{正文\}/g, text));
 }
 /** 开了哪些附加功能（旁白 / CG / 小剧场）——只写开了的那几个 */
 function enabledExtras() {
@@ -363,12 +458,14 @@ function enabledExtras() {
 }
 
 function extrasPrompt(text, cfg) {
+  cfg = normCfg(cfg);
+  text = cleanInput(text);   // 附加功能的正文也要剔除标签 ✓
   const want = enabledExtras();
   const spec = want.map(([desc, tag]) => '- ' + desc + String.fromCharCode(10) +
     '  <' + tag + ' name="角色名">' + String.fromCharCode(10) + '  （内容）' + String.fromCharCode(10) + '  </' + tag + '>').join(String.fromCharCode(10));
-  return String(cfg.prompts.extras ?? '')
+  return withPresetBlocks(String(cfg.prompts.extras ?? '')
     .replace(/\{要写的\}/g, spec)
-    .replace(/\{正文\}/g, text);
+    .replace(/\{正文\}/g, text));
 }
 
 /* ------------------------------------------------------------------ 四个任务 */
@@ -408,6 +505,7 @@ function missingCells(limit = 40) {
  * 单独再发一次记忆请求补上 ✓（不改并发 ✓ 只是补一次 ✓）
  */
 export async function taskMemoryFollowUp(text, cfg, signal = null) {
+  text = cleanInput(text);   // 记忆补跑的正文也要剔除标签 ✓
   try {
     const want = (() => {
       const set = new Set();
@@ -532,7 +630,7 @@ export async function taskFill(text, cfg, signal = null) {
     const miss = missingCells();
     if (miss.length) {
       sup.tried = true; sup.missing = miss.length;
-      const out2 = await sideApi.call(supplementPrompt(miss, text), { task: "fill", temperature: 0.2, maxTokens: 6000, signal });
+      const out2 = await sideApi.call(supplementPrompt(miss, cleanInput(text)), { task: "fill", temperature: 0.2, maxTokens: 6000, signal });
       let ops2 = [];
       try { const pr = protocol.parseAll(out2); ops2 = Array.isArray(pr) ? pr : (pr?.ops ?? pr?.expanded?.ops ?? []); } catch { ops2 = []; }
       if (ops2.length) { const r2 = await txn.applyOps(ops2, { source: "side" }); sup.applied = r2?.applied ?? 0; }
@@ -544,11 +642,16 @@ export async function taskFill(text, cfg, signal = null) {
     let n = 0;
     const timer = setInterval(() => {
       n += 1;
+      /* 【审计修 · 关键】回滚只冻结 15 秒 ✗ 而收口要跑 60 秒 ✓
+         冻结一过，final-fill / derived 这些来源都不在冻结白名单里 →
+         会把兜底值、系统轮次**写回刚刚被回滚掉的表** ✗
+         修法：每次收口前先看"是不是刚回滚过 / 用户点了终止" ✓ 是就跳过这一轮 ✓ */
+      try { if (isAbortRequested() || isFrozen()) return; } catch (e) { /* ignore */ }
       try { finalFill(); } catch (e) { /* ignore */ }
       try { fixDerivedFields(); } catch (e) { /* ignore */ }
       if (n >= 15) { try { clearInterval(timer); } catch (e) { /* ignore */ } }
     }, 4000);
-    console.log('[RBQ] 开始持续收口（每 4 秒一次，共 60 秒）');
+    console.log('[RBQ] 开始持续收口（每 4 秒一次，共 60 秒；回滚/终止期间自动跳过 ✓）');
   } catch (e) { /* ignore */ }
   return { applied: r?.applied ?? 0, ops: ops.length, failed: (r?.failed ?? []).length, supplement: sup };
 }
@@ -568,17 +671,20 @@ export async function taskMemory(text, cfg, signal = null, msgId = null) {
     items.push({ name, fields: fields ?? { 感知: body }, raw: body });
   }
   if (!items.length) return { added: 0, raw: out.slice(0, 200) };
-  try { memory.addMemories(items, msgId); } catch (e) { return { added: 0, error: String(e?.message ?? e) }; }
-  return { added: items.length, chars: out.length };
+  /* 【审计修】addMemories 会因为"同 40 字前缀已存在"而一条都不写 ✗
+     以前把【解析出的条数】当写入条数 → 面板显示"ok N 条记忆"但一条没入库 ✓ */
+  try { const wr = memory.addMemories(items, msgId); return { added: Number(wr?.added ?? 0), parsed: items.length, chars: out.length }; } catch (e) { return { added: 0, error: String(e?.message ?? e) }; }
 }
 
 /** 把"指定轮次的小总结"拼成总结任务的输入（数据库里就有，不用重发正文） */
 export function summaryInput(fallbackText, round, threshold) {
+  /* 【用户要求】大总结/预览用的"退回正文"也要剔除标签 ✓（参数名是 fallbackText ✓） */
+  const safeText = cleanInput(fallbackText);
   const from = Math.max(1, Number(round) - Math.max(1, Number(threshold) || 50) + 1);
   const to = Number(round) || 0;
   let events = [];
   try { events = summaryStore.listEvents({ limit: 500 }).filter((e) => Number(e.round) >= from && Number(e.round) <= to); } catch { events = []; }
-  if (!events.length) return { text: fallbackText, from, to, count: 0 };
+  if (!events.length) return { text: safeText, from, to, count: 0 };
   const lines = events.map((e) => '- [第' + e.round + '轮] ' + String(e.text ?? '').replace(/\n/g, '；'));
   return { text: lines.join('\n'), from, to, count: events.length };
 }
@@ -681,7 +787,7 @@ export async function taskRepairFillBatched(text, cfg, missing, signal = null) {
 }
 export async function taskRepairFill(text, cfg, missing, signal = null) {
   if (isFrozen()) return { applied: 0, rest: String(missing || ""), frozen: true };
-  const out = await sideApi.call(repairPrompt(missing, text), { task: "fill", temperature: 0.2, maxTokens: 6000, signal });
+  const out = await sideApi.call(repairPrompt(missing, cleanInput(text)), { task: "fill", temperature: 0.2, maxTokens: 6000, signal });
   try { window.__rbqLastRepair = String(out ?? ''); console.log('[RBQ] 补写返回 ' + String(out ?? '').length + ' 字：' + String(out ?? '').slice(0, 160).replace(/\s+/g, ' ')); } catch (e) { /* ignore */ }
   const ops = (() => {
     try { const parsed = protocol.parseAll(out); if (Array.isArray(parsed)) return parsed; if (parsed && parsed.ops) return parsed.ops; return []; } catch (e) { return []; }
@@ -740,6 +846,8 @@ export function runForMessage(id, text, { round = 0, signal = null, onProgress =
   try { if (cfg && typeof cfg === "object") cfg.msgId = id; } catch (e) { /* ignore */ }
   if (!cfg.enabled) return Promise.resolve({ skipped: 'disabled' });
   if (!text || !String(text).trim()) return Promise.resolve({ skipped: 'empty' });
+  /* 【用户要求】所有侧路任务都只用"剔除过标签内容"的正文 ✓（不是只给记忆清洗 ✗）*/
+  text = cleanInput(text);
 
   const key = Number(id);
   if (inflight.has(key)) return inflight.get(key);          // in-flight 去重
@@ -782,7 +890,23 @@ export function runForMessage(id, text, { round = 0, signal = null, onProgress =
       rec.tasks[name] = { state: 'running', attempts: 0, error: null };
       prog(name, 'running', '进行中…');
       const maxTries = Math.max(1, Number(cfg.retries ?? 2) + 1);
-      return sideApi.withRetry(fn, {
+      /* 【审计修 · 重试只能重试"没写过库的那一段"】
+         侧路任务是"调 API → 解析 → 写库"一条龙 ✓ 重试包住整条 ✗
+         → 若失败发生在写库**之后**（进度回调抛错之类 ✓）重试会把同样的 op 再写一遍 ✗
+           （重复建行 + 再叠一个 60 秒收口定时器 ✓）
+         修法：每次尝试前记一次写库计数 ✓ 如果**这次尝试自己**写过库又失败了 → 不再重试 ✓
+         （必须按"本次尝试"判 ✓ 不能用全局起点 —— 填表/记忆是并发的 ✓
+           别人的写入会让全局起点误判成"我写过" ✗ 实测就这样把重试全堵死了 ✓） */
+      const fnGuarded = async (...args) => {
+        const before = getWriteCount();
+        try {
+          return await fn(...args);
+        } catch (e) {
+          if (getWriteCount() !== before) throw new Error('这一轮已经写进表格了，不再重试（避免重复写入）：' + String(e?.message ?? e));
+          throw e;
+        }
+      };
+      return sideApi.withRetry(fnGuarded, {
         // 【用户实测】以前默认 0 → 从来不重试 ✗；改成默认 2（= 最多 3 次尝试，与参考实现一致 ✓）
         retries: Number(cfg.retries ?? 2),
         backoffMs: Number(cfg.backoffMs) || 1000,
@@ -988,7 +1112,9 @@ export function finalFill() {
         const iN = cols0.findIndex((c) => c.indexOf("名称") >= 0 || c.indexOf("角色") >= 0 || c.indexOf("实体") >= 0);
         if (iN < 0) continue;
         const rows0 = (store.getRows(no, { create: false }) ?? []).slice();
-        rows0.forEach((r, ri) => {
+        /* 【审计发现】这里以前是正序 forEach + 按 rowIndex 删 ✗ → 删完一行数组左移 → 后一条删到别人 ✓
+       改成倒序（同文件其它三处本来就是倒序 ✓）*/
+      [].concat(rows0.map((r, ri) => ({ r, ri }))).reverse().forEach(({ r, ri }) => {
           const k = String(r?.[iN] ?? "").trim();
           if (!/^未命名\d*$/.test(k)) return;
           try {
@@ -1137,7 +1263,7 @@ export function finalFill() {
    所以回滚后调用 freezeFor(15000)：这段时间内所有写表入口直接跳过 ✓ */
 // 冻结开关放在中立模块 core/freeze.js（txn 也要用 ✓ 避免循环依赖）
 // 冻结开关在 core/freeze.js：既要**本地可用**（模块内部调用 ✓），也要对 index.js 暴露 ✓
-import { freezeFor, isFrozen, isAbortRequested, requestAbort, clearAbort } from './freeze.js';
+import { freezeFor, isFrozen, isAbortRequested, requestAbort, clearAbort, getWriteCount } from './freeze.js';
 export { freezeFor, isFrozen, isAbortRequested, requestAbort, clearAbort };
 
 export function fixDerivedFields() {
