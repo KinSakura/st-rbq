@@ -42,7 +42,7 @@ export const DEF = {
 
 /** 兜底源（用户没填 sourceUrl 时按顺序试 ✓） */
 export function fallbackSources() {
-  /* 【实测 · v2.11.5】jsDelivr 的 @main 缓存能落后好几版 ✗
+  /* 【实测 · v2.11.6】jsDelivr 的 @main 缓存能落后好几版 ✗
      我这边实测：jsDelivr 报 2.9.4，而 raw / GitHub API 都是 2.11.0 ✓
      所以顺序改成【raw 第一】(官方且最及时) → GitHub API → jsDelivr 只当最后兜底 ✓
      另外：某个源报的版本比本地还旧时，检查逻辑会明确提示"这是缓存"并主动去清 ✓ */
@@ -135,6 +135,8 @@ const state = {
   sources: [],
   checking: false,
   latest: '',
+  gitBehind: false,
+  git: null,
   entry: '',
   purged: false,
   error: '',
@@ -151,7 +153,8 @@ export function status() {
    现在三条一起判：远端更高 / 版本相同但入口文件不同 / 远端比本地旧（明确提示是缓存） */
 const entryDiff = !!(state.latest && state.entry && localEntry && state.entry !== localEntry);
 const remoteOlder = !!latest && !!localVersion && localVersion !== '0.1.0' && isNewer(localVersion, latest) && latest !== localVersion;
-const hasUpdate = (!!latest && isNewer(latest, localVersion)) || (!!latest && latest === localVersion && entryDiff);
+/* 【v2.11.6】酒馆服务器的 git 比对最高优先 ✓ 它说的是"远端确实有新提交" ✓ 与 CDN 无关 ✓ */
+const hasUpdate = !!state.gitBehind || (!!latest && isNewer(latest, localVersion)) || (!!latest && latest === localVersion && entryDiff);
   const dismissed = !!latest && c.dismissVersion === latest;
   return {
     current: localVersion,
@@ -171,6 +174,8 @@ const hasUpdate = (!!latest && isNewer(latest, localVersion)) || (!!latest && la
     remoteEntry: state.entry || '',
     localEntry: localEntry || '',
     purged: !!state.purged,
+    gitBehind: !!state.gitBehind,
+    git: state.git || null,
     sources: state.sources || [],
     repo: REPO_URL,
   };
@@ -201,6 +206,11 @@ function versionFromJson(j) {
  *   （任何源报了更新的版本就算有更新 ✓ 不再受单个源缓存影响 ✓）
  * @returns {Promise<{version:string, source:string, all:Array}>}
  */
+/** 统一的请求头（CSRF 等，酒馆要求）*/
+function headersFor() {
+  try { return ctx()?.getRequestHeaders?.() ?? { 'Content-Type': 'application/json' }; } catch (e) { return { 'Content-Type': 'application/json' }; }
+}
+
 async function fetchLatest(sources) {
   const results = await Promise.all(sources.map(async (url) => {
     try {
@@ -244,6 +254,15 @@ export async function check({ force = false } = {}) {
     const custom = String(c.sourceUrl ?? '').trim();
     const def = String(DEF.sourceUrl).trim();
     const sources = (custom && custom !== def) ? [custom] : fallbackSources();
+    /* 【v2.11.6 关键】先问酒馆服务器（它 git fetch 后比对提交，与 CDN 无关）*/
+    try {
+      const git = await gitCheck(headersFor());
+      state.git = git || null;
+      state.gitBehind = !!(git && git.commit && git.isUpToDate === false);
+      if (state.gitBehind) {
+        try { console.log('[RBQ] 酒馆服务器说有新提交（本地 ' + git.commit + (git.branch ? ' @ ' + git.branch : '') + '）→ 判定有更新 ✓'); } catch (e) { /* ignore */ }
+      }
+    } catch (e) { state.git = null; state.gitBehind = false; }
     let r = await fetchLatest(sources);
     /* 远端比本地旧 = 几乎一定是 CDN 缓存 → 主动清一次再查 */
     try {
@@ -324,6 +343,51 @@ async function discoverSelf(headers) {
  *        而且 update 接口会把名字里的 '/' sanitize 掉 ✗ → 只能用真实文件夹名 ✓
  *   做法：先问 discover 拿到真实名字与安装位置 ✓，再退到默认两种都试一遍 ✓
  */
+/**
+ * 【酒馆自己就是这么查的】让服务器在扩展目录里 git fetch，再比对提交
+ *   POST /api/extensions/version { extensionName, global }
+ *   → { currentBranchName, currentCommitHash, isUpToDate, remoteUrl }
+ *   不是 git 仓库时 isUpToDate 会是 true 且 commit 为空（那就说明这套查法不适用）
+ */
+export async function gitCheck(headers) {
+  const out = { tried: [], isUpToDate: null, commit: '', branch: '', url: '', error: '' };
+  try {
+    let found = [];
+    try { found = await discoverSelf(headers); } catch (e) { /* ignore */ }
+    const seen = new Set();
+    const tries = [];
+    for (const t of [...found, { extensionName: EXT_NAME, global: false }, { extensionName: EXT_NAME, global: true }]) {
+      const k = t.extensionName + '|' + !!t.global;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      tries.push({ extensionName: t.extensionName, global: !!t.global });
+    }
+    for (const body of tries) {
+      let res;
+      try {
+        res = await fetch('/api/extensions/version', {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      } catch (e) { out.error = String(e?.message ?? e); continue; }
+      const txt = await res.text().catch(() => '');
+      if (!res.ok) { out.error = 'HTTP ' + res.status + ' ' + String(txt).slice(0, 120); out.tried.push(JSON.stringify(body)); continue; }
+      let j = {};
+      try { j = JSON.parse(txt) || {}; } catch (e) { /* ignore */ }
+      out.tried.push(JSON.stringify(body));
+      out.commit = String(j.currentCommitHash || '').slice(0, 7);
+      out.branch = String(j.currentBranchName || '');
+      out.url = String(j.remoteUrl || '');
+      out.isUpToDate = j.isUpToDate === true;
+      if (!out.commit) out.error = '这台服务器上的扩展目录不是 Git 仓库（酒馆查不了提交）';
+      break;
+    }
+    try { console.log('[RBQ] 酒馆服务器 git 比对：' + JSON.stringify(out)); } catch (e) { /* ignore */ }
+  } catch (e) { out.error = String(e?.message ?? e); }
+  return out;
+}
+
 export async function applyUpdate() {
   const c = config();
   const headers = (() => { try { return ctx()?.getRequestHeaders?.() ?? { 'Content-Type': 'application/json' }; } catch { return { 'Content-Type': 'application/json' }; } })();

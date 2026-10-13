@@ -3,7 +3,7 @@
 > 把「剧情」交给主 AI，把「记录」交给侧路 AI。
 > 一个自包含的 SillyTavern 扩展：表格数据库 + 侧路填表 + 长期记忆 + 逐楼快照回滚 + 沉浸式视图。
 
-![版本](https://img.shields.io/badge/版本-2.11.5-d9a441)
+![版本](https://img.shields.io/badge/版本-2.11.6-d9a441)
 ![平台](https://img.shields.io/badge/平台-SillyTavern%201.12%2B-4a7de0)
 ![依赖](https://img.shields.io/badge/依赖-零构建%20%7C%20纯%20ESM-3fb950)
 

@@ -112,7 +112,7 @@ function buildPanel() {
   const header = el('div', { class: 'rbq-header' }, [
     el('span', { class: 'rbq-drag-handle', text: '⠿', title: '按住拖动面板', style: 'cursor:move;opacity:.6;margin-right:6px;user-select:none' }),
     el('div', { class: 'rbq-title', html: '📊 RBQ 数据库 <small class="rbq-sub"></small>' }),
-      el('span', { class: 'rbq-ver-badge', text: 'v2.11.5' }),
+      el('span', { class: 'rbq-ver-badge', text: 'v2.11.6' }),
     el('button', { class: 'rbq-btn rbq-icon', title: '刷新', onclick: () => render() }, '⟳'),
     el('button', { class: 'rbq-btn rbq-icon', title: '收起', onclick: () => hidePanel() }, '✕'),
   ]);
@@ -608,7 +608,7 @@ function renderViewsPane() {
     renderViewport: (key, el2) => renderViewportInto(key, el2),
   };
 
-  import('./views/dashboard.js?v=21150')
+  import('./views/dashboard.js?v=21160')
     .then((m) => m.renderDashboard(host, api))
     .catch((e) => {
       host.textContent = '';
@@ -624,7 +624,7 @@ function renderViewsPane() {
     const panel = el('div', { class: 'rbq-cc-panel' });
     overlay.appendChild(panel);
     pane.appendChild(overlay);
-    import('./views/characterCard.js?v=21150')
+    import('./views/characterCard.js?v=21160')
       .then((m) => m.renderCharacterCard(panel, state.card, {
         el,
         onClose: () => { state.card = null; render(); },
@@ -709,20 +709,20 @@ function __renderViewportInto(key, hostEl) {
     hostEl.textContent = '';
     hostEl.appendChild(el('div', { class: 'rbq-empty', text: `加载失败：${e?.message ?? e}` }));
   };
-  if (key === 'extras') return import('./views/extrasLines.js?v=21150').then((m) => m.renderExtras(hostEl, sub));
-  if (key === 'relations') return import('./views/relations.js?v=21150').then((m) => m.renderRelations(hostEl, sub));
-  if (key === 'map') return import('./views/map.js?v=21150').then((m) => m.renderMap(hostEl, sub));
+  if (key === 'extras') return import('./views/extrasLines.js?v=21160').then((m) => m.renderExtras(hostEl, sub));
+  if (key === 'relations') return import('./views/relations.js?v=21160').then((m) => m.renderRelations(hostEl, sub));
+  if (key === 'map') return import('./views/map.js?v=21160').then((m) => m.renderMap(hostEl, sub));
   if (key === 'inventory' || key === 'equipment') {
-    return import('./views/inventory.js?v=21150').then((m) => (key === 'inventory' ? m.renderInventory(hostEl, sub) : m.renderEquipment(hostEl, sub)));
+    return import('./views/inventory.js?v=21160').then((m) => (key === 'inventory' ? m.renderInventory(hostEl, sub) : m.renderEquipment(hostEl, sub)));
   }
   if (GRAPH_VIEWS.has(key)) {
-    return import('./views/graphs.js?v=21150').then((m) => {
+    return import('./views/graphs.js?v=21160').then((m) => {
       const map = { quests: m.renderQuestBoard, skills: m.renderSkillWheel, monsters: m.renderThreats, factions: m.renderFactionWeb, chronicle: m.renderEraTimeline };
       (map[key] ?? m.renderQuestBoard)(hostEl, sub);
     }).catch(fail);
   }
   if (PANEL_VIEWS.has(key)) {
-    return import('./views/panels.js?v=21150').then((m) => {
+    return import('./views/panels.js?v=21160').then((m) => {
       const hit = m.PANELS.find(([k]) => k === key);
       if (!hit) { hostEl.textContent = ''; hostEl.appendChild(el('div', { class: 'rbq-empty', text: `没有名为 ${key} 的视图` })); return; }
       hit[2](hostEl, sub);
@@ -1882,8 +1882,11 @@ function attachSettingsExtras() {
         const when = st.at ? new Date(st.at).toLocaleTimeString() : '';
         if (!st.latest) return '当前版本 ' + st.current + (st.error ? ('　（检查失败：' + st.error + '）') : '　（还没检查）');
         if (st.hasUpdate) return '当前版本 ' + st.current + '　→　有新版本 ' + st.latest + (st.entryDiff && st.latest === st.current ? '（入口文件不同 = 内容有更新）' : '') + (when ? ('　（' + when + ' 检查）') : '') + (st.dismissed ? '　[已忽略]' : '');
+        /* 【v2.11.6】酒馆服务器 git 比对最权威 ✓ 优先显示它 ✓ */
+        if (st.gitBehind) return '当前版本 ' + st.current + '　酒馆服务器比对：本地提交 ' + ((st.git && st.git.commit) || '?') + ' → 远端有新提交 ✓ 点「立即更新」拉取';
+        if (st.git && st.git.commit && st.git.isUpToDate === true) return '当前版本 ' + st.current + '　酒馆服务器比对：本地提交 ' + st.git.commit + ' → 远端已是最新 ✓';
         /* 【用户反馈 · 远程酒馆说"已是最新"】远端报的比你本地还旧 = 几乎一定是 CDN 缓存 ✓ 要说清 ✓ */
-        if (st.remoteOlder) return '当前版本 ' + st.current + '　远端只报到 ' + st.latest + '（比你本地旧 → 多半是 jsDelivr 缓存 ✗）' + (st.purged ? '　已尝试清缓存 ✓' : '') + '　→ 点下面「清缓存并重查」';
+        if (st.remoteOlder) return '当前版本 ' + st.current + '（若装了 git 版，用「立即更新」让服务器自己比对）　远端只报到 ' + st.latest + '（比你本地旧 → 多半是 jsDelivr 缓存 ✗）' + (st.purged ? '　已尝试清缓存 ✓' : '') + '　→ 点下面「清缓存并重查」';
         return '当前版本 ' + st.current + '　已是最新 ✓' + (when ? ('　（' + when + ' 检查）') : '');
       })(),
     }),
@@ -1914,7 +1917,10 @@ function attachSettingsExtras() {
     el('button', {
       class: 'rbq-btn', text: '清缓存并重查',
       title: '清掉 jsDelivr 的 CDN 缓存后重新查一次（它默认会缓存几分钟到几小时）',
-      onclick: async () => { try { const s2 = await updater.forceRefresh(); notify(s2.hasUpdate ? 'success' : 'info', s2.hasUpdate ? ('清完缓存后发现有新版本 ' + s2.latest) : '清完缓存后仍是最新（那仓库那份可能确实没更新）'); } catch (e) { notify('warning', '清缓存失败：' + (e && e.message)); } render(); },
+      onclick: async () => { try { const s2 = await updater.forceRefresh();
+      const g = s2.git || {};
+      const gitMsg = g && g.commit ? ('酒馆服务器：本地提交 ' + g.commit + (g.isUpToDate === false ? ' → 远端有更新 ✓' : ' → 已是最新 ✓')) : ('这台服务器上查不到 git 信息（' + (g.error || '非 Git 安装') + '）');
+      notify(s2.hasUpdate ? 'success' : 'info', s2.hasUpdate ? ('发现有新版本：' + (s2.gitBehind ? ('酒馆服务器说远端有新提交（本地 ' + (g.commit || '?') + '）') : (s2.latest || ''))) : ('已是最新。' + gitMsg)); } catch (e) { notify('warning', '清缓存失败：' + (e && e.message)); } render(); },
     }),
     el('button', { class: 'rbq-btn', text: '立即更新', onclick: async () => { await updater.applyUpdate(); render(); } }),
     el('button', { class: 'rbq-btn', text: '打开仓库', onclick: () => { try { window.open(updater.REPO_URL, '_blank'); } catch (e) { /* ignore */ } } }),
@@ -2348,7 +2354,7 @@ function renderSettingsPane() {
         sel.addEventListener('change', () => {
           store.updateConfig({ inputButton: { placement: sel.value } });
           notify('info', '位置已切换，重新注入按钮…');
-          import('./inputButton.js?v=21150').then((m) => { m.stopInputButton(); m.startInputButtonInjection(); });
+          import('./inputButton.js?v=21160').then((m) => { m.stopInputButton(); m.startInputButtonInjection(); });
           render();
         });
         return sel;
