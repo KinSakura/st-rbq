@@ -338,7 +338,7 @@ check('dry-run 不写数据', async () => {
    用户实测：发给侧路 API 的"正文"里混着思考块/小总结（预设产出的标签 ✗）
    要求：只留真正的剧情，其余整块丢掉（含**未闭合**的思考块 ✗） */
 await check('正文清洗：思考块 / 小总结 / <data> / 未闭合块 全部丢掉', async () => {
-  const prose = await import('file:///D:/Personal/Documents/deepseek-harness/default-workspace/st-rbq/core/prose.js');
+  const prose = await import('../core/prose.js');
   const sample = [
     '<thinking_matrix>',
     '【协议一】请求解析：玩家想推门。',
@@ -374,7 +374,7 @@ await check('正文清洗：思考块 / 小总结 / <data> / 未闭合块 全部
    规则：预设提示词**名字**含 🔒↓ → 拼到侧路提示词【上面】；含 🔒↑ → 拼到【下面】✓
    用户明确了语义（位置标记，不是包一层 ✓），所以用纯逻辑单测锁住 ✓ */
 await check('预设位置标记：🔒↓ 放上面 / 🔒↑ 放下面', async () => {
-  const sp = await import('file:///D:/Personal/Documents/deepseek-harness/default-workspace/st-rbq/core/sidePipeline.js');
+  const sp = await import('../core/sidePipeline.js');
   const fake = [
     { name: '🔒↓口径', content: '只写真实发生的事实。', enabled: true },
     { name: '🔒↓用词', content: '用词克制。', enabled: true },
@@ -392,7 +392,7 @@ await check('预设位置标记：🔒↓ 放上面 / 🔒↑ 放下面', async 
 });
 
 await check('预设标记的顺序：同名标记按预设顺序，↑/↓ 交错也各归各位', async () => {
-  const sp = await import('file:///D:/Personal/Documents/deepseek-harness/default-workspace/st-rbq/core/sidePipeline.js');
+  const sp = await import('../core/sidePipeline.js');
   const fake = [
     { name: '🔒↑甲的下面', content: 'B1', enabled: true },
     { name: '🔒↓甲在上面', content: 'A1', enabled: true },
