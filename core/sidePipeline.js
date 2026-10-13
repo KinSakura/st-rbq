@@ -46,7 +46,7 @@ export function inflightCount() { return inflight.size; }
 
 /* ------------------------------------------------------------------ 提示词组装 */
 
-function tableSkeleton(maxChars = 2400) {
+function tableSkeleton(maxChars = 9600) {
   const out = [];
   let used = 0;
   let tables = [];
@@ -197,6 +197,27 @@ function normCfg(cfg) {
   return cfg || {};
 }
 
+/**
+ * 提示词去重（同一段一模一样的内容只留第一份）
+ *   用户实测：填表提示词里「本轮必写清单」整段出现两次（我们的规范 + 预设里还有一份）
+ *   → 请求白白变大变慢 → 上游超过网关的 100 秒 → HTTP 524 ✗
+ */
+function dedupeBlocks(text) {
+  const parts = String(text || "").split(/\n{2,}/);
+  const seen = new Set();
+  const out = [];
+  let dropped = 0;
+  for (const p of parts) {
+    const key = p.trim();
+    if (key.length > 40) {
+      if (seen.has(key)) { dropped++; continue; }
+      seen.add(key);
+    }
+    out.push(p);
+  }
+  return { text: out.join(String.fromCharCode(10) + String.fromCharCode(10)), dropped };
+}
+
 export function fillPrompt(rawText, cfg) {
   cfg = normCfg(cfg);
   const text = cleanInput(rawText);
@@ -238,7 +259,12 @@ export function fillPrompt(rawText, cfg) {
     .replace(/\{表格\}/g, tableSkeleton())   // 兼容旧模板
     .replace(/\{正文\}/g, text);
   /* 按预设位置标记包起来：🔒↓ 的提示词放上面 / 🔒↑ 的放下面 ✓ */
-  return withPresetBlocks(core);
+  const built = withPresetBlocks(core);
+  const dd = dedupeBlocks(built);
+  try {
+    const chars = dd.text.length;
+  } catch (e) { /* ignore */ }
+  return dd.text;
 }
 
 /**
@@ -579,7 +605,7 @@ function supplementPrompt(list, text) {
     data,
     "",
     "正文（用来推断）：",
-    String(text ?? "").slice(0, 6000),
+    String(text ?? "").slice(0, 24000),
   ]).join(String.fromCharCode(10));
 }
 /* 【用户反馈 · 点了终止不会马上停】收口定时器要能被"终止"立刻叫停 ✓ */

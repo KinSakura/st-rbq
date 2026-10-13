@@ -119,7 +119,7 @@ export function clearAll() {
 export function listEvents({ limit = 50 } = {}) { const d = data(); return d.events.slice(-limit); }
 
 /** 给 AI 的"最近几轮发生了什么"（接在表格数据后面，防止它忘掉刚发生的事） */
-export function recentText({ limit = 5, maxChars = 900 } = {}) {
+export function recentText({ limit = 5, maxChars = 3600 } = {}) {
   const ev = listEvents({ limit });
   if (!ev.length) return '';
   const out = ['## 最近几轮事件（小总结）'];
@@ -207,7 +207,7 @@ export function applyBigToTable(items, round = currentRound()) {
     const row = new Array(cols.length).fill('');
     row[iPack] = `第 ${round} 轮`;
     if (iSpan >= 0) row[iSpan] = `第 ${round} 轮`;
-    row[iStory] = String(it).slice(0, 500);
+    row[iStory] = String(it).slice(0, 2000);
     rows.push(row);
     added++;
   }

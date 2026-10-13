@@ -123,7 +123,7 @@ function tableCheatSheet(no) {
  * 生成"只补数据"的提示词。
  * 刻意**不给**任何正文改写的机会：明确要求只输出 <data> 块。
  */
-export function buildPatchPrompt({ reason, failed = [], missing = [], originalText = '', maxChars = 8000 }) {
+export function buildPatchPrompt({ reason, failed = [], missing = [], originalText = '', maxChars = 32000 }) {
   const parts = [];
   parts.push('你刚才的回复里，表格数据部分有问题，需要你**只补这一部分**。');
   parts.push('');

@@ -42,7 +42,7 @@ export const DEF = {
 
 /** 兜底源（用户没填 sourceUrl 时按顺序试 ✓） */
 export function fallbackSources() {
-  /* 【实测 · v2.11.6】jsDelivr 的 @main 缓存能落后好几版 ✗
+  /* 【实测 · v2.11.8】jsDelivr 的 @main 缓存能落后好几版 ✗
      我这边实测：jsDelivr 报 2.9.4，而 raw / GitHub API 都是 2.11.0 ✓
      所以顺序改成【raw 第一】(官方且最及时) → GitHub API → jsDelivr 只当最后兜底 ✓
      另外：某个源报的版本比本地还旧时，检查逻辑会明确提示"这是缓存"并主动去清 ✓ */
@@ -153,7 +153,7 @@ export function status() {
    现在三条一起判：远端更高 / 版本相同但入口文件不同 / 远端比本地旧（明确提示是缓存） */
 const entryDiff = !!(state.latest && state.entry && localEntry && state.entry !== localEntry);
 const remoteOlder = !!latest && !!localVersion && localVersion !== '0.1.0' && isNewer(localVersion, latest) && latest !== localVersion;
-/* 【v2.11.6】酒馆服务器的 git 比对最高优先 ✓ 它说的是"远端确实有新提交" ✓ 与 CDN 无关 ✓ */
+/* 【v2.11.8】酒馆服务器的 git 比对最高优先 ✓ 它说的是"远端确实有新提交" ✓ 与 CDN 无关 ✓ */
 const hasUpdate = !!state.gitBehind || (!!latest && isNewer(latest, localVersion)) || (!!latest && latest === localVersion && entryDiff);
   const dismissed = !!latest && c.dismissVersion === latest;
   return {
@@ -254,7 +254,7 @@ export async function check({ force = false } = {}) {
     const custom = String(c.sourceUrl ?? '').trim();
     const def = String(DEF.sourceUrl).trim();
     const sources = (custom && custom !== def) ? [custom] : fallbackSources();
-    /* 【v2.11.6 关键】先问酒馆服务器（它 git fetch 后比对提交，与 CDN 无关）*/
+    /* 【v2.11.8 关键】先问酒馆服务器（它 git fetch 后比对提交，与 CDN 无关）*/
     try {
       const git = await gitCheck(headersFor());
       state.git = git || null;

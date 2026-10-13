@@ -1,6 +1,6 @@
 {
   "name": "st-rbq",
-  "version": "2.11.6",
+  "version": "2.11.8",
   "private": true,
   "type": "module",
   "description": "RBQ 数据库：SillyTavern 扩展 —— 表格数据库 + 侧路 API 填表 + 长期记忆 + 逐楼快照回滚 + 沉浸式视图（零构建，纯 ESM）"

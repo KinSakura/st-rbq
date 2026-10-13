@@ -477,7 +477,7 @@ function buildTableDataPlain({ onlyNonEmpty = true, maxRowsPerTable = 200 } = {}
   if (!out.length) return '（暂无表格数据）';
   // 长期记忆：与表格分开（表格装现状、记忆装历史），按相关度只注入最相关的一小段
   try {
-    const mem = memory.buildMemoryText({ query: recallQuery(), limit: 10, maxChars: 1400 });
+    const mem = memory.buildMemoryText({ query: recallQuery(), limit: 10, maxChars: 5600 });
     if (mem) { out.push(''); out.push(mem); }
   } catch (e) { console.warn('[RBQ] 记忆注入失败', e); }
   return out.join('\n');

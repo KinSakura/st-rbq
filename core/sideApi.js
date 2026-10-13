@@ -86,6 +86,7 @@ export const DEF = {
   maxConcurrency: 3,        // 用户要求：默认并发 3 ✓
   timeoutMs: 120000,         // 用户要求：默认 120 秒超时 ✓
   retries: 3,
+  stream: true,          // 流式输出（默认开）：连接持续有数据 → 不会被网关 100 秒掐断（524）
   backoffMs: 1000,
   skipMainTableSegment: true, // 开了侧路就不再让主 API 填表（省 token）
   tasks: { fill: true, memory: true, summary: true, extras: false },
@@ -266,6 +267,34 @@ export function hintOf(err) {
 /** 参考 xingv2.6：让模型先"进入填表状态"（预填 assistant 开头） */
 const THOUGHT_PREFILL = '<thought>收到指令，我将一步一步开始思考，并完成填表：先逐张表对照当前数据，看这一轮每张表分别需要新增、更新还是删除，再输出 <data>。</thought>';
 
+/**
+ * 流式读取 SSE：边生成边收字节（非流式要等整段写完才回，长填表必被网关 100 秒掐断 -> HTTP 524）
+ */
+async function readStream(res) {
+  const rd = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = ""; let out = ""; let fin = "";
+  for (;;) {
+    const r = await rd.read();
+    if (r.done) break;
+    buf += dec.decode(r.value, { stream: true });
+    const lines = buf.split(String.fromCharCode(10));
+    buf = lines.pop();
+    for (const line of lines) {
+      const s = line.trim();
+      if (!s.startsWith("data:")) continue;
+      const d = s.slice(5).trim();
+      if (d === "[DONE]") return { out, fin };
+      try {
+        const j = JSON.parse(d);
+        const ch = j && j.choices && j.choices[0];
+        if (ch && ch.delta && ch.delta.content) out += ch.delta.content;
+        if (ch && ch.finish_reason) fin = String(ch.finish_reason);
+      } catch (e) { /* 半包 */ }
+    }
+  }
+  return { out, fin };
+}
 export async function call(prompt, { system = '', extras = null, task = 'fill', temperature = 0.3, maxTokens = 1400, signal = null } = {}) {
   /* 【用户要求】侧路这一发**全部按「系统」身份发** ✓
        · 预设标记进来的内容（不管预设里设的是系统/用户/AI 助手）→ 系统 ✓
@@ -296,6 +325,7 @@ export async function call(prompt, { system = '', extras = null, task = 'fill', 
       model: c.model || undefined,
       temperature,
       max_tokens: useMax,
+      stream: c.stream !== false,   // 默认开流式（见 readStream 说明）
       messages: [
         { role: 'system', content: asSystem },
         { role: 'assistant', content: THOUGHT_PREFILL },   // 预填思考开头，逼模型进入填表模式（参考 xingv2.6）
@@ -352,12 +382,33 @@ export async function call(prompt, { system = '', extras = null, task = 'fill', 
       lastErrorSet(msg, { url, status: res.status });
       throw new Error(msg);
     }
+    /* 【v2.11.8】默认走流式：边收边拼 ✓ 不会被网关中途掐断 ✓ */
+    if (c.stream !== false && res.body && typeof res.body.getReader === "function") {
+      const st = await readStream(res);
+      const outS = String(st.out || "");
+      if (st.fin === 'length') {
+        const msg = '侧路输出被截断（max_tokens=' + useMax + ' 用完了）—— 请把「输出上限」调大，或只更新必要的表';
+        lastErrorSet(msg, { url, status: res.status });
+        try { console.warn('[RBQ] ' + msg); } catch (e) { /* ignore */ }
+      }
+      if (!outS) {
+        const msg = '侧路流式返回空内容（可能上游拒绝或中途断开）';
+        lastErrorSet(msg, { url, status: res.status });
+        throw new Error(msg);
+      }
+      lastErrorClear();
+      return outS;
+    }
     let raw = '';
     try { raw = await res.text(); } catch (e) { /* ignore */ }
     let j = null;
     try { j = JSON.parse(raw); } catch (e) {
       const short = String(raw || '').replace(/\s+/g, ' ').trim().slice(0, 300);
-      const msg = '侧路返回的不是 JSON（可能是反向代理/登录页/被拦了）：' + short;
+      /* 524/502/504 是网关层的问题（Cloudflare 默认约 100 秒就掐断）✗ 要说人话 ✓ */
+      let why = '侧路返回的不是 JSON（可能是反向代理/登录页/被拦了）';
+      if (res.status === 524) why = '上游超时（HTTP 524）：网关等了约 100 秒没等到上游回复 —— 提示词偏大或上游太慢，换直连接口 / 换更快的模型 / 精简预设';
+      else if (res.status === 502 || res.status === 504) why = '网关错误或超时（HTTP ' + res.status + '）：上游没回应';
+      const msg = why + '：' + short;
       lastErrorSet(msg, { url, status: res.status });
       throw new Error(msg);
     }
