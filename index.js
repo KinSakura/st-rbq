@@ -32,14 +32,14 @@ import { extractProse, extractProseStrict } from './core/prose.js';
 import * as sidePipeline from './core/sidePipeline.js';
 import { expandUnparsed } from './core/expand.js';
 import * as persona from './core/persona.js';
-import * as progress from './ui/progress.js?v=21100';
+import * as progress from './ui/progress.js?v=21110';
 import { closeNotify } from './core/ctx.js';
 import * as updater from './core/updater.js';
 import * as presetImport from './core/presetImport.js';
 import * as summary from './core/summary.js';
 import { macroTableData, macroTablePrompt, macroAllTablesJson, buildTableData } from './prompts/prompts.js';
-import { mountPanel, showPanel, togglePanel, refreshPanel } from './ui/panel.js?v=21100';
-import { startInputButtonInjection, setPanelOpener, refreshBadge, stopInputButton } from './ui/inputButton.js?v=21100';
+import { mountPanel, showPanel, togglePanel, refreshPanel } from './ui/panel.js?v=21110';
+import { startInputButtonInjection, setPanelOpener, refreshBadge, stopInputButton } from './ui/inputButton.js?v=21110';
 
 const VERSION = '0.1.0';
 let initialized = false;

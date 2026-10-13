@@ -138,7 +138,7 @@ export function renderDashboard(host, api) {
   const compassMenu = el('div', { class: 'rbq-compass-menu' });
   // 版本号放菜单顶部（菜单每次打开都会重建，不会像标题那样被覆盖）
   /* ⚠️ 发版时这个版本号必须和 manifest.json 一致 ✓（smoke-test 里有"版本号一致性"用例守着 ✓） */
-  compassMenu.appendChild(el('div', { class: 'rbq-ver-head', text: 'RBQ v2.11.0' }));
+  compassMenu.appendChild(el('div', { class: 'rbq-ver-head', text: 'RBQ v2.11.1' }));
   for (const [key, label] of api.views) {
     const item = el('button', {
       class: `rbq-compass-item${api.currentView === key ? ' rbq-active' : ''}`,

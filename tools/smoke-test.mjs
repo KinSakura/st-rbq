@@ -261,6 +261,19 @@ console.log('\n=== 7. 事务：数值增减 / 部分失败 / 撤销 ===');
   });
 }
 
+check('更新判定：版本比较正确 + status 暴露入口/缓存字段 + 有强制清缓存', async () => {
+  const u = await import('../core/updater.js');
+  eq(u.isNewer('2.11.0', '2.10.9'), true, '2.11.0 应比 2.10.9 新：');
+  eq(u.isNewer('2.9.7', '2.11.0'), false, '2.9.7 不该被认为比 2.11.0 新：');
+  eq(u.isNewer('2.11.0', '2.11.0'), false, '同版本不算新：');
+  eq(u.parseVersion('v2.11.0').join('.'), '2.11.0', 'parseVersion 要能去掉 v：');
+  ok(typeof u.forceRefresh === 'function', '应有 forceRefresh（清 CDN 缓存后重查）');
+  ok(typeof u.purgeCache === 'function', '应有 purgeCache');
+  const st = u.status();
+  for (const k of ['entryDiff', 'remoteOlder', 'remoteEntry', 'localEntry', 'purged']) ok(k in st, 'status 应暴露 ' + k);
+  ok(Array.isArray(u.fallbackSources()) && u.fallbackSources().length >= 3, '多源兜底至少 3 个源');
+});
+
 check('别名下标绝不错位（插列后必须同步别名表）', async () => {
   const A = (await import('../data/aliases.js')).default;
   const S = await import('../core/schema.js');

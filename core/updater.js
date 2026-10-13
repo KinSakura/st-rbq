@@ -16,6 +16,9 @@ export const EXT_NAME = 'st-rbq';
 
 /** 本地版本（启动时从扩展自己的 manifest.json 读 ✓ 读不到再回退） */
 let localVersion = '0.1.0';
+/** 本地入口文件名（manifest.js[0]）—— 版本号没变但内容变了时也能认出更新 */
+let localEntry = '';
+export function getLocalEntry() { return localEntry; }
 export function setLocalVersion(v) { if (v) localVersion = String(v); }
 export function getLocalVersion() { return localVersion; }
 
@@ -39,10 +42,14 @@ export const DEF = {
 
 /** 兜底源（用户没填 sourceUrl 时按顺序试 ✓） */
 export function fallbackSources() {
+  /* 【实测 · v2.11.1】jsDelivr 的 @main 缓存能落后好几版 ✗
+     我这边实测：jsDelivr 报 2.9.4，而 raw / GitHub API 都是 2.11.0 ✓
+     所以顺序改成【raw 第一】(官方且最及时) → GitHub API → jsDelivr 只当最后兜底 ✓
+     另外：某个源报的版本比本地还旧时，检查逻辑会明确提示"这是缓存"并主动去清 ✓ */
   return [
-    'https://cdn.jsdelivr.net/gh/' + REPO + '@main/manifest.json',
     'https://raw.githubusercontent.com/' + REPO + '/main/manifest.json',
     'https://api.github.com/repos/' + REPO + '/contents/manifest.json',
+    'https://cdn.jsdelivr.net/gh/' + REPO + '@main/manifest.json',
   ];
 }
 
@@ -58,6 +65,7 @@ export async function initLocalVersion() {
     if (res.ok) {
       const j = await res.json();
       setLocalVersion(j?.version);
+      try { localEntry = String((j?.js || [])[0] || ''); } catch (e) { /* ignore */ }
       return localVersion;
     }
   } catch (e) { /* ignore */ }
@@ -91,6 +99,34 @@ export function isNewer(a, b) {
   return false;
 }
 
+/**
+ * 清 jsDelivr 缓存（它的 @main 会缓存几分钟到几小时，
+ *   这就是“仓库更新了但插件说已是最新”的主因）。purge 接口是公开的，失败也不影响。
+ */
+export async function purgeCache(entry = '') {
+  const paths = ['manifest.json'];
+  const e = String(entry || '').trim();
+  if (/^[\w.\-]+\.js$/.test(e)) paths.push(e);
+  paths.push('index.js');
+  let any = false;
+  for (const f of paths) {
+    try {
+      const u = 'https://purge.jsdelivr.net/gh/' + REPO + '@main/' + f;
+      const res = await fetch(u, { cache: 'no-store' });
+      if (res.ok) any = true;
+      console.log('[RBQ] 清缓存 ' + f + ' → ' + (res.ok ? '成功' : ('HTTP ' + res.status)));
+    } catch (e2) { console.log('[RBQ] 清缓存 ' + f + ' 失败：' + String(e2?.message ?? e2)); }
+  }
+  return any;
+}
+
+/** 面板按钮用：强制清缓存 + 重查 */
+export async function forceRefresh() {
+  state.checked = false;
+  try { await purgeCache(state.entry || localEntry); } catch (e) { /* ignore */ }
+  return check({ force: true });
+}
+
 /* ------------------------------------------------------------------ 状态 */
 
 const state = {
@@ -99,6 +135,8 @@ const state = {
   sources: [],
   checking: false,
   latest: '',
+  entry: '',
+  purged: false,
   error: '',
   at: 0,
   downloadUrl: '',
@@ -107,7 +145,13 @@ const state = {
 export function status() {
   const c = config();
   const latest = state.latest;
-  const hasUpdate = !!latest && isNewer(latest, localVersion);
+  /* 【用户反馈 · 远程酒馆点检查更新却说已是最新】
+   根因：以前只看版本号 —— 远端（尤其 jsDelivr 缓存的 manifest）报的版本可能比本地还旧，
+        或者版本号一样但内容换了，于是永远显示已是最新。
+   现在三条一起判：远端更高 / 版本相同但入口文件不同 / 远端比本地旧（明确提示是缓存） */
+const entryDiff = !!(state.latest && state.entry && localEntry && state.entry !== localEntry);
+const remoteOlder = !!latest && !!localVersion && localVersion !== '0.1.0' && isNewer(localVersion, latest) && latest !== localVersion;
+const hasUpdate = (!!latest && isNewer(latest, localVersion)) || (!!latest && latest === localVersion && entryDiff);
   const dismissed = !!latest && c.dismissVersion === latest;
   return {
     current: localVersion,
@@ -122,6 +166,11 @@ export function status() {
     sourceUrl: c.sourceUrl,
     downloadUrl: c.downloadUrl || DEF.downloadUrl,
     source: state.source || '',
+    entryDiff,
+    remoteOlder,
+    remoteEntry: state.entry || '',
+    localEntry: localEntry || '',
+    purged: !!state.purged,
     sources: state.sources || [],
     repo: REPO_URL,
   };
@@ -160,7 +209,13 @@ async function fetchLatest(sources) {
       const j = await res.json();
       const v = versionFromJson(j);
       if (!v) throw new Error("没有 version 字段");
-      return { url, version: v, ok: true };
+      /* 远端入口文件名（GitHub API 的 base64 也要解出来） */
+      let entry = '';
+      try {
+        if (j && typeof j.content === 'string' && !j.version) entry = String((JSON.parse(atob(String(j.content).replace(/\s/g, '')))?.js || [])[0] || '');
+        else entry = String((j?.js || [])[0] || '');
+      } catch (e) { /* ignore */ }
+      return { url, version: v, entry, ok: true };
     } catch (e) { return { url, version: "", ok: false, err: String(e?.message ?? e).slice(0, 40) }; }
   }));
   const good = results.filter((x) => x.ok);
@@ -168,7 +223,9 @@ async function fetchLatest(sources) {
   /* 取最高版本 ✓ */
   let best = good[0];
   for (const x of good) { if (isNewer(x.version, best.version)) best = x; }
-  return { version: best.version, source: best.url, all: good.map((x) => String(x.url).replace(/^https?:\/\//, "").slice(0, 30) + "=" + x.version) };
+  /* 入口文件名取第一个报出来的 */
+  const entry = (good.find((x) => x.entry) || {}).entry || '';
+  return { version: best.version, source: best.url, entry, all: good.map((x) => String(x.url).replace(/^https?:\/\//, "").slice(0, 30) + "=" + x.version) };
 }
 
 /**
@@ -187,8 +244,14 @@ export async function check({ force = false } = {}) {
     const custom = String(c.sourceUrl ?? '').trim();
     const def = String(DEF.sourceUrl).trim();
     const sources = (custom && custom !== def) ? [custom] : fallbackSources();
-    const r = await fetchLatest(sources);
+    let r = await fetchLatest(sources);
+    /* 远端比本地旧 = 几乎一定是 CDN 缓存 → 主动清一次再查 */
+    try {
+      const looksStale = r.version && localVersion && localVersion !== '0.1.0' && isNewer(localVersion, r.version);
+      if (looksStale) { state.purged = await purgeCache(r.entry); if (state.purged) r = await fetchLatest(sources); }
+    } catch (e) { /* ignore */ }
     state.latest = r.version;
+    state.entry = r.entry || '';
     state.source = r.source;
     state.sources = r.all || [];
     try { console.log('[RBQ] 各更新源：' + (r.all || []).join(' ｜ ')); } catch (e) { /* ignore */ }
@@ -240,13 +303,21 @@ export async function applyUpdate() {
       headers: { ...headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({ extensionName: EXT_NAME }),
     });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const bodyText = await res.text().catch(() => '');
+    if (!res.ok) {
+      let detail = bodyText;
+      try { const j = JSON.parse(bodyText); detail = j?.message || j?.error || bodyText; } catch (e) { /* 非 JSON 就用原文 */ }
+      throw new Error('HTTP ' + res.status + (detail ? ('：' + String(detail).slice(0, 200)) : ''));
+    }
     notify('success', '更新完成，刷新页面生效。');
     return { ok: true };
   } catch (e) {
     const msg = String(e?.message ?? e);
     const link = state.downloadUrl || c.downloadUrl;
-    notify('warning', link ? ('自动更新失败（' + msg + '），请手动下载：' + link) : ('自动更新失败：' + msg));
+    const zip = 'https://github.com/' + REPO + '/archive/refs/heads/main.zip';
+    /* 说清为什么：酒馆的一键更新是靠 git pull 的，手动拷贝/ZIP 装的没有仓库可拉 */
+    notify('warning', '一键更新没成功（' + msg + '）—— 如果你是手动拷贝或 ZIP 安装的，酒馆没有 git 仓库可拉，只能手动覆盖。下载：' + (link || zip));
+    try { console.log('[RBQ] 一键更新失败：' + msg + NL + '   手动更新包：' + zip); } catch (e2) { /* ignore */ }
     return { ok: false, error: msg, downloadUrl: link };
   }
 }
