@@ -797,7 +797,7 @@
                 "runOnEdit": true,
                 "findRegex": "[\\s\\S]*",
                 "trimStrings": [],
-                "replaceString": "<Request>\n【思维链强制】：在输出任何正文或表格内容前，必须严格以 <thinking_matrix> 标签起手并按照思考内容完整输出思考过程。\n【叙事推进】：根据剧情指示 [$2] 续接前文。将其平滑融入角色对话与物理状态过渡中，进行沉浸感润色{{getglobalvar::userSpeakBanText}}。{{getvar::fastForward}}\n【叙事灵感】：{{getvar::divinationEvent}}\n【防断流】：如果正文末尾描写了任何角色（NPC）准备开口说话的动作或提示语（如：“说道：”、“开口：”等）或出现半个引号，【绝对不允许】在此处停顿截断！必须强制连同该角色引号内的完整对白一并输出完毕后，且语法标点完全闭合，才允许结束本回合的正文生成。严禁出现“张口不说话”的半截断流现象！\n【人称要求】：必须以第三人称导演模式生成所有剧情。\n【角色设定审查】：由于剧情推进，必须维持每一个角色（包括{{user}}）自身的性格与社会设定，绝对不允许OOC。禁止出现角色机器人化，保持活人感。\n【系统级映射】：叙事文本闭合后，必须绝对遵循表格操作指南，扫描历史残留因果，调用 insert/delete/update 函数维护全表。{{getvar::fiftyRoundReminder}}{{getvar::departureReminder}} {{getvar::tableDataIssueReport}}\n</Request>",
+                "replaceString": "<Request>\n【思维链强制】：在输出任何正文或表格内容前，必须严格以 <thinking_matrix> 标签起手并按照思考内容完整输出思考过程。\n【叙事推进】：根据剧情指示 [$2] 续接前文。将其平滑融入角色对话与物理状态过渡中，进行沉浸感润色{{getglobalvar::userSpeakBanText}}。{{getvar::fastForward}}\n【叙事灵感】：{{getvar::divinationEvent}}\n【防断流】：如果正文末尾描写了任何角色（NPC）准备开口说话的动作或提示语（如：“说道：”、“开口：”等）或出现半个引号，【绝对不允许】在此处停顿截断！必须强制连同该角色引号内的完整对白一并输出完毕后，且语法标点完全闭合，才允许结束本回合的正文生成。严禁出现“张口不说话”的半截断流现象！\n【人称要求】：必须以第三人称导演模式生成所有剧情。\n【角色设定审查】：由于剧情推进，必须维持每一个角色（包括{{user}}）自身的性格与社会设定，绝对不允许OOC。禁止出现角色机器人化，保持活人感。\n</Request>",
                 "placement": [
                     1
                 ],
@@ -5146,43 +5146,9 @@
             }
         },
         "tavern_helper": {
-            "scripts": [
-                {
-                    "type": "script",
-                    "enabled": false,
-                    "name": "RBQ配置菜单",
-                    "id": "3ecf7d49-b94b-468c-8257-81142517928c",
-                    "content": "(async function() {\n    const SCRIPT_URL = 'https://gist.githubusercontent.com/KinSakura/554e43d323a45af99a920332ec541a8f/raw/rbq.js';\n\n    try {\n        const response = await fetch(SCRIPT_URL);\n        if (!response.ok) throw new Error('请求失败，状态码：' + response.status);\n        const code = await response.text();\n        eval(code);\n        console.log('RBQ 脚本加载成功');\n    } catch (err) {\n        console.error('远程脚本加载失败:', err);\n        if (typeof toastr !== 'undefined') {\n            toastr.error('RBQ 脚本加载失败，请检查 Gist 是否公开且文件存在', '加载器');\n        }\n    }\n})();",
-                    "info": "",
-                    "button": {
-                        "enabled": true,
-                        "buttons": []
-                    },
-                    "data": {},
-                    "export_with": {
-                        "data": true,
-                        "button": true
-                    }
-                },
-                {
-                    "type": "script",
-                    "enabled": true,
-                    "name": "RBQ状态栏",
-                    "id": "2de54383-0959-45da-9b61-f2d272373597",
-                    "content": "(async function() {\n    const SCRIPT_URL = 'https://gist.githubusercontent.com/KinSakura/554e43d323a45af99a920332ec541a8f/raw/statusbar.js';\n\n    try {\n        const response = await fetch(SCRIPT_URL);\n        if (!response.ok) throw new Error('状态码：' + response.status);\n        const code = await response.text();\n        eval(code);\n        console.log('状态栏脚本加载成功');\n    } catch (err) {\n        console.error('状态栏脚本加载失败:', err);\n        if (typeof toastr !== 'undefined') {\n            toastr.error('状态栏脚本加载失败，请检查 Gist 文件', '状态栏');\n        }\n    }\n})();",
-                    "info": "",
-                    "button": {
-                        "enabled": true,
-                        "buttons": []
-                    },
-                    "data": {},
-                    "export_with": {
-                        "data": true,
-                        "button": true
-                    }
-                }
-            ],
+            "scripts": [],
             "variables": {}
         }
-    }
+    },
+    "name": "斯拉RBQ · 游戏：零"
 }
