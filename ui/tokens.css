@@ -1,0 +1,123 @@
+/* ==========================================================================
+   RBQ · 设计令牌（唯一真相源）
+   组件只消费 var(--rbq-*)，禁止再硬编码色值。
+   深色 = 午夜（默认）；浅色 = 纸面（[data-rbq-scheme="light"]）
+   ========================================================================== */
+
+#rbq-panel, #rbq-input-btn, .rbq-options-container {
+  /* 字体 */
+  --rbq-font-sans: 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --rbq-font-serif: Georgia, 'Songti SC', 'Noto Serif SC', 'Source Han Serif SC', serif;
+  --rbq-font-mono: ui-monospace, 'JetBrains Mono', 'Cascadia Code', 'SF Mono', Consolas, monospace;
+
+  /* 字号阶（随 --rbq-fs-base 缩放，界面大小 13/14/16） */
+  --rbq-fs-base: 14px;
+  --rbq-fs-display: 1.25rem;
+  --rbq-fs-title: 1rem;
+  --rbq-fs-body: 0.875rem;
+  --rbq-fs-label: 0.75rem;
+  --rbq-fs-data: 0.8125rem;
+
+  /* 圆角阶 */
+  --rbq-radius-sm: 4px;
+  --rbq-radius: 6px;
+  --rbq-radius-lg: 8px;
+  --rbq-radius-pill: 999px;
+
+  /* 间距阶 */
+  --rbq-space-1: 4px;
+  --rbq-space-2: 8px;
+  --rbq-space-3: 12px;
+  --rbq-space-4: 16px;
+  --rbq-space-5: 24px;
+  --rbq-space-6: 32px;
+
+  /* 动效 */
+  --rbq-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --rbq-dur: 0.2s;
+  --rbq-dur-fast: 0.15s;
+  --rbq-dur-slow: 0.3s;
+
+  /* z 层级 */
+  --rbq-z-fab: 9999;
+  --rbq-z-panel: 9999;
+  --rbq-z-overlay: 100000;
+  --rbq-z-toast: 100001;
+
+  /* ── 深色 · 午夜（默认） ── */
+  --rbq-bg: #12100d;
+  --rbq-glass-bg: #1a1512;
+  --rbq-glass-border: rgba(157, 139, 108, 0.30);
+  --rbq-glass-blur: blur(10px) saturate(120%);
+  --rbq-glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --rbq-bg-elev: #241d18;
+  --rbq-bg-sunken: #0c0a08;
+  --rbq-card-bg: #1e1814;
+
+  --rbq-accent: #c2a878;
+  --rbq-accent-rgb: 194, 168, 120;
+  --rbq-accent-hover: #d8c096;
+  --rbq-accent-dim: rgba(157, 139, 108, 0.16);
+  --rbq-accent-glow: rgba(157, 139, 108, 0.35);
+
+  --rbq-text: #dcd0c0;
+  --rbq-text-dim: rgba(220, 208, 192, 0.70);
+  --rbq-text-mut: rgba(220, 208, 192, 0.50);
+  --rbq-text-sec: rgba(220, 208, 192, 0.82);
+
+  --rbq-bg-surface1: rgba(255, 255, 255, 0.03);
+  --rbq-bg-surface2: rgba(255, 255, 255, 0.06);
+  --rbq-surface-sunken: rgba(0, 0, 0, 0.22);
+  --rbq-border: rgba(157, 139, 108, 0.18);
+  --rbq-border-strong: rgba(157, 139, 108, 0.36);
+
+  --rbq-shadow-glass: 0 5px 25px rgba(0, 0, 0, 0.7);
+  --rbq-shadow-soft: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --rbq-border-gold: rgba(157, 139, 108, 0.55);
+  --rbq-glow-gold: 0 0 15px rgba(157, 139, 108, 0.35);
+  --rbq-glow-accent: 0 0 22px var(--rbq-accent-glow);
+
+  --rbq-ok: #4fbf7f;
+  --rbq-warn: #d29922;
+  --rbq-danger: #e0574c;
+  --rbq-info: #58a6ff;
+  --rbq-bg-image: radial-gradient(1200px 620px at 18% -12%, rgba(217, 164, 65, 0.16), transparent 62%);
+}
+
+/* ── 浅色 · 纸面 ── */
+#rbq-panel[data-rbq-scheme="light"], #rbq-panel[data-rbq-theme="parchment"] {
+  --rbq-bg: #f4f1ea;
+  --rbq-glass-bg: rgba(240, 247, 244, 0.96);
+  --rbq-glass-border: rgba(60, 73, 63, 0.22);
+  --rbq-bg-elev: #ffffff;
+  --rbq-bg-sunken: #e6e2d8;
+  --rbq-card-bg: #ffffff;
+  --rbq-accent: #7a5c1f;
+  --rbq-accent-hover: #946f28;
+  --rbq-accent-dim: rgba(122, 92, 31, 0.12);
+  --rbq-accent-glow: rgba(122, 92, 31, 0.22);
+  --rbq-text: #2f3a33;
+  --rbq-text-dim: rgba(47, 58, 51, 0.78);
+  --rbq-text-mut: rgba(47, 58, 51, 0.58);
+  --rbq-text-sec: rgba(47, 58, 51, 0.86);
+  --rbq-border: rgba(47, 58, 51, 0.12);
+  --rbq-border-strong: rgba(47, 58, 51, 0.22);
+  --rbq-bg-surface1: rgba(60, 73, 63, 0.04);
+  --rbq-bg-surface2: rgba(60, 73, 63, 0.08);
+  --rbq-shadow-glass: 0 24px 48px rgba(120, 110, 90, 0.22);
+  --rbq-ok: #2f7d4f;
+  --rbq-warn: #9a6b1f;
+  --rbq-danger: #a83a33;
+}
+
+/* 界面字号（设置里可切 13 / 14 / 16） */
+#rbq-panel[data-rbq-fs="13"] { --rbq-fs-base: 13px; }
+#rbq-panel[data-rbq-fs="14"] { --rbq-fs-base: 14px; }
+#rbq-panel[data-rbq-fs="16"] { --rbq-fs-base: 16px; }
+#rbq-panel { font-size: var(--rbq-fs-base); font-family: var(--rbq-font-sans); }
+
+/* 面板拖动把手与缩放手柄 */
+#rbq-panel .rbq-drag-handle { cursor: move; opacity: .55; user-select: none; padding: 0 4px; }
+#rbq-panel .rbq-drag-handle:hover { opacity: 1; }
+#rbq-panel .rbq-resize-grip { color: var(--rbq-text-mut); user-select: none; }
+#rbq-panel .rbq-resize-grip:hover { color: var(--rbq-accent); }

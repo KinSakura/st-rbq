@@ -1,0 +1,14 @@
+{
+  "display_name": "RBQ 数据库",
+  "loading_order": 90,
+  "requires": [],
+  "optional": [],
+  "js": [
+    "boot-v2930.js"
+  ],
+  "css": "ui/styles.css",
+  "author": "RBQ",
+  "version": "2.9.3",
+  "homePage": "",
+  "auto_update": false
+}

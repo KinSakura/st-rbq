@@ -1,0 +1,2418 @@
+@import url('./tokens.css');
+/* ==========================================================================
+   RBQ 数据库 —— 样式
+   全部选择器以 .rbq- 或 #rbq- 开头，避免污染酒馆与其它的扩展。
+   颜色全部走 CSS 变量，尽量继承酒馆主题（--SmartThemeBodyColor 等）。
+   ========================================================================== */
+
+:root {
+  --rbq-accent: #d9a441;
+  --rbq-accent-hover: #e8b95c;
+  --rbq-ok: #3fb950;
+  --rbq-warn: #d29922;
+  --rbq-danger: #f85149;
+  --rbq-border: rgba(255, 255, 255, 0.14);
+  --rbq-border-strong: rgba(255, 255, 255, 0.26);
+  --rbq-bg: #14120e;
+  --rbq-bg-elev: #1b1e26;
+  --rbq-bg-sunken: #101217;
+  --rbq-text: #e8eaf0;
+  --rbq-text-dim: #9ca3b0;
+  --rbq-text-mut: #6b7280;
+  --rbq-radius: 10px;
+  --rbq-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+}
+
+body.rbq-light {
+  --rbq-border: rgba(0, 0, 0, 0.14);
+  --rbq-border-strong: rgba(0, 0, 0, 0.28);
+  --rbq-bg: #f6f7fa;
+  --rbq-bg-elev: #ffffff;
+  --rbq-bg-sunken: #eceef4;
+  --rbq-text: #1c1f26;
+  --rbq-text-dim: #4b5563;
+  --rbq-text-mut: #6b7280;
+  --rbq-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
+}
+
+/* ------------------------------------------------------- 输入框旁的小按钮 */
+
+#rbq-input-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+  transition: filter 0.15s ease, transform 0.1s ease;
+}
+
+#rbq-input-btn:hover { filter: brightness(1.25); }
+#rbq-input-btn:active { transform: scale(0.94); }
+#rbq-input-btn.rbq-has-data { position: relative; }
+
+/* 有数据时右上角一个小圆点，一眼看出"表格在跑" */
+#rbq-input-btn.rbq-has-data::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--rbq-ok);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.35);
+}
+
+/* ------------------------------------------------------------- 面板主体 */
+
+#rbq-panel {
+  position: fixed;
+  z-index: 100001;
+  display: flex;
+  flex-direction: column;
+  width: 980px;
+  max-width: 96vw;
+  height: 640px;
+  max-height: 88vh;
+  background: var(--rbq-bg);
+  color: var(--rbq-text);
+  border: 1px solid var(--rbq-border-strong);
+  border-radius: var(--rbq-radius);
+  box-shadow: var(--rbq-shadow);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow: hidden;
+  font-family: var(--mainFontFamily, 'Segoe UI', system-ui, sans-serif);
+}
+
+#rbq-panel.rbq-hidden { display: none; }
+#rbq-panel * { box-sizing: border-box; }
+
+.rbq-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--rbq-bg-elev);
+  border-bottom: 1px solid var(--rbq-border);
+  cursor: move;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.rbq-title { font-weight: 600; font-size: 14px; margin-right: auto; }
+.rbq-title small { font-weight: 400; color: var(--rbq-text-mut); margin-left: 8px; }
+
+.rbq-tabs { display: flex; gap: 2px; padding: 0 8px; background: var(--rbq-bg-elev); border-bottom: 1px solid var(--rbq-border); flex-shrink: 0; }
+
+.rbq-tab {
+  padding: 8px 14px;
+  cursor: pointer;
+  color: var(--rbq-text-dim);
+  border: none;
+  background: none;
+  font: inherit;
+  border-bottom: 2px solid transparent;
+  border-radius: 6px 6px 0 0;
+}
+.rbq-tab:hover { color: var(--rbq-text); background: rgba(255, 255, 255, 0.04); }
+.rbq-tab.rbq-active { color: var(--rbq-accent); border-bottom-color: var(--rbq-accent); font-weight: 500; }
+
+.rbq-body { flex: 1; min-height: 0; display: flex; }
+.rbq-pane { display: none; flex: 1; min-height: 0; }
+.rbq-pane.rbq-active { display: flex; }
+
+/* --------------------------------------------------------------- 表格页 */
+
+.rbq-tablelist {
+  width: 190px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--rbq-border);
+  overflow-y: auto;
+  background: var(--rbq-bg-sunken);
+  padding: 6px;
+}
+
+.rbq-tablelist-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--rbq-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.rbq-tablelist-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--rbq-text); }
+.rbq-tablelist-item.rbq-active { background: rgba(157, 139, 108, 0.18); color: var(--rbq-accent); }
+.rbq-tablelist-item .rbq-no { color: var(--rbq-text-mut); font-size: 11px; font-variant-numeric: tabular-nums; }
+.rbq-tablelist-item .rbq-count { margin-left: auto; font-size: 11px; color: var(--rbq-text-mut); }
+
+.rbq-gridwrap { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+.rbq-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--rbq-border);
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  background: var(--rbq-bg-elev);
+}
+
+.rbq-gridscroll { flex: 1; min-height: 0; overflow: auto; }
+.rbq-grid { border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
+
+.rbq-grid th,
+.rbq-grid td {
+  border-right: 1px solid var(--rbq-border);
+  border-bottom: 1px solid var(--rbq-border);
+  padding: 5px 8px;
+  vertical-align: top;
+  min-width: 90px;
+  max-width: 380px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.rbq-grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--rbq-bg-elev);
+  color: var(--rbq-text-dim);
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.rbq-grid tbody tr:hover td { background: rgba(255, 255, 255, 0.03); }
+.rbq-grid tbody tr.rbq-selected td { background: rgba(157, 139, 108, 0.14); }
+
+.rbq-grid .rbq-rowno {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--rbq-bg-sunken);
+  color: var(--rbq-text-mut);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  min-width: 42px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.rbq-grid td[contenteditable='true'] { outline: none; cursor: text; }
+.rbq-grid td[contenteditable='true']:focus { box-shadow: inset 0 0 0 2px var(--rbq-accent); background: rgba(157, 139, 108, 0.08); }
+
+.rbq-empty { padding: 40px 20px; text-align: center; color: var(--rbq-text-mut); }
+
+/* --------------------------------------------------------------- 控件 */
+
+.rbq-btn {
+  border: 1px solid var(--rbq-border);
+  background: var(--rbq-bg-elev);
+  color: var(--rbq-text);
+  padding: 5px 11px;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  transition: all 0.12s ease;
+}
+.rbq-btn:hover { border-color: var(--rbq-border-strong); background: rgba(255, 255, 255, 0.06); }
+.rbq-btn.rbq-primary { background: var(--rbq-accent); border-color: transparent; color: #fff; }
+.rbq-btn.rbq-primary:hover { background: var(--rbq-accent-hover); }
+.rbq-btn.rbq-danger { color: var(--rbq-danger); border-color: rgba(248, 81, 73, 0.4); }
+.rbq-btn.rbq-danger:hover { background: rgba(248, 81, 73, 0.12); }
+.rbq-btn.rbq-icon { padding: 5px 8px; }
+.rbq-btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+
+.rbq-spacer { margin-left: auto; }
+
+.rbq-input,
+.rbq-select {
+  background: var(--rbq-bg-sunken);
+  border: 1px solid var(--rbq-border);
+  color: var(--rbq-text);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 12.5px;
+}
+.rbq-input:focus, .rbq-select:focus { outline: none; border-color: var(--rbq-accent); }
+
+.rbq-switch { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; user-select: none; }
+.rbq-switch input { display: none; }
+.rbq-switch .rbq-knob {
+  width: 34px; height: 19px; border-radius: 10px;
+  background: var(--rbq-bg-sunken); border: 1px solid var(--rbq-border);
+  position: relative; transition: all 0.15s ease; flex-shrink: 0;
+}
+.rbq-switch .rbq-knob::before {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 13px; height: 13px; border-radius: 50%;
+  background: var(--rbq-text-mut); transition: all 0.15s ease;
+}
+.rbq-switch input:checked + .rbq-knob { background: var(--rbq-accent); border-color: transparent; }
+.rbq-switch input:checked + .rbq-knob::before { transform: translateX(15px); background: #fff; }
+
+/* --------------------------------------------------------- 审计 / 设置页 */
+
+.rbq-scroll { flex: 1; overflow-y: auto; padding: 12px 14px; }
+.rbq-card {
+  background: var(--rbq-bg-elev);
+  border: 1px solid var(--rbq-border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+.rbq-card h4 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
+.rbq-card .rbq-hint { color: var(--rbq-text-mut); font-size: 12px; line-height: 1.6; }
+.rbq-row { display: flex; align-items: center; gap: 10px; margin: 8px 0; flex-wrap: wrap; }
+.rbq-row label { color: var(--rbq-text-dim); font-size: 12.5px; min-width: 132px; }
+
+.rbq-kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; font-size: 12.5px; }
+.rbq-kv dt { color: var(--rbq-text-mut); }
+.rbq-kv dd { margin: 0; color: var(--rbq-text); word-break: break-all; }
+
+.rbq-audit-item { display: flex; gap: 8px; padding: 5px 0; border-bottom: 1px dashed var(--rbq-border); font-size: 12.5px; }
+.rbq-audit-item:last-child { border-bottom: none; }
+.rbq-badge { font-size: 11px; padding: 1px 7px; border-radius: 9px; background: rgba(157, 139, 108, 0.18); color: var(--rbq-accent); }
+.rbq-badge.rbq-ok { background: rgba(63, 185, 80, 0.16); color: var(--rbq-ok); }
+.rbq-badge.rbq-warn { background: rgba(210, 153, 34, 0.16); color: var(--rbq-warn); }
+.rbq-badge.rbq-danger { background: rgba(248, 81, 73, 0.16); color: var(--rbq-danger); }
+
+.rbq-scroll::-webkit-scrollbar, .rbq-gridscroll::-webkit-scrollbar, .rbq-tablelist::-webkit-scrollbar { width: 8px; height: 8px; }
+.rbq-scroll::-webkit-scrollbar-thumb, .rbq-gridscroll::-webkit-scrollbar-thumb, .rbq-tablelist::-webkit-scrollbar-thumb {
+  background: var(--rbq-border-strong); border-radius: 4px;
+}
+
+/* ==========================================================================
+   视图层（给用户看的部分：角色卷宗 / 关系图 / 地图 / 骰子 / 行动选项）
+   ========================================================================== */
+
+.rbq-viewnav { display: flex; gap: 2px; padding: 8px 10px 0; flex-wrap: wrap; flex-shrink: 0; }
+.rbq-viewtab {
+  padding: 6px 13px; border-radius: 16px; cursor: pointer; font: inherit; font-size: 12.5px;
+  border: 1px solid var(--rbq-border); background: transparent; color: var(--rbq-text-dim);
+}
+.rbq-viewtab:hover { color: var(--rbq-text); border-color: var(--rbq-border-strong); }
+.rbq-viewtab.rbq-active { background: rgba(157, 139, 108, 0.18); border-color: var(--rbq-accent); color: var(--rbq-accent); }
+.rbq-viewhost { flex: 1; min-height: 0; overflow-y: auto; padding: 10px 12px 16px; }
+.rbq-viewbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+
+.rbq-empty { padding: 36px 20px; text-align: center; color: var(--rbq-text-mut); line-height: 1.8; }
+.rbq-empty code { background: var(--rbq-bg-sunken); padding: 1px 5px; border-radius: 3px; }
+
+/* ---- 角色卷宗 ---- */
+.rbq-dossier { display: flex; gap: 12px; min-height: 0; }
+.rbq-dossier-list { width: 168px; flex-shrink: 0; max-height: 420px; overflow-y: auto; }
+.rbq-dossier-item {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 7px; cursor: pointer;
+  color: var(--rbq-text-dim);
+}
+.rbq-dossier-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--rbq-text); }
+.rbq-dossier-item.rbq-active { background: rgba(157, 139, 108, 0.18); color: var(--rbq-accent); }
+.rbq-dossier-main { flex: 1; min-width: 0; }
+.rbq-dossier-head { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
+.rbq-dossier-title { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 15px; }
+.rbq-dossier-title strong { font-size: 16px; }
+.rbq-avatar { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.rbq-avatar-lg { width: 56px; height: 56px; }
+.rbq-avatar-fallback {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(157, 139, 108, 0.22); color: var(--rbq-accent); font-weight: 600;
+}
+.rbq-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--rbq-ok); margin-left: auto; flex-shrink: 0; }
+
+.rbq-stats { display: flex; gap: 12px; flex-wrap: wrap; margin: 8px 0 12px; }
+.rbq-stat { flex: 1; min-width: 150px; }
+.rbq-stat-top { display: flex; justify-content: space-between; font-size: 12px; color: var(--rbq-text-dim); margin-bottom: 3px; }
+.rbq-stat-track { height: 7px; border-radius: 4px; background: var(--rbq-bg-sunken); overflow: hidden; }
+.rbq-stat-fill { height: 100%; border-radius: 4px; background: var(--rbq-accent); transition: width 0.25s ease; }
+.rbq-stat-fill.rbq-hp { background: linear-gradient(90deg, #e0555c, #f85149); }
+.rbq-stat-fill.rbq-mp { background: linear-gradient(90deg, #4a7de0, #58a6ff); }
+.rbq-stat-fill.rbq-sp { background: linear-gradient(90deg, #3fb950, #56d364); }
+
+.rbq-subtabs { display: flex; gap: 2px; border-bottom: 1px solid var(--rbq-border); margin-bottom: 8px; flex-wrap: wrap; }
+.rbq-subtab {
+  padding: 5px 11px; font: inherit; font-size: 12.5px; cursor: pointer; border: none; background: none;
+  color: var(--rbq-text-dim); border-bottom: 2px solid transparent; border-radius: 5px 5px 0 0;
+}
+.rbq-subtab:hover { color: var(--rbq-text); }
+.rbq-subtab.rbq-active { color: var(--rbq-accent); border-bottom-color: var(--rbq-accent); }
+.rbq-subtab.rbq-dim { opacity: 0.45; }
+.rbq-dossier-pane { max-height: 330px; overflow-y: auto; }
+
+/* ---- 关系图 ---- */
+.rbq-relations-wrap { background: var(--rbq-bg-sunken); border: 1px solid var(--rbq-border); border-radius: 10px; overflow: hidden; }
+.rbq-relations-svg { width: 100%; height: auto; display: block; }
+.rbq-edge-label { font-size: 11px; text-anchor: middle; dominant-baseline: middle; }
+.rbq-node-label { font-size: 12.5px; text-anchor: middle; fill: var(--rbq-text); }
+.rbq-node:hover circle { filter: brightness(1.3); }
+.rbq-node:hover .rbq-node-label { fill: var(--rbq-accent); }
+
+/* ---- 地图 ---- */
+.rbq-place { border-left: 3px solid var(--rbq-border); padding: 7px 0 7px 10px; margin: 7px 0; }
+.rbq-place-here { border-left-color: var(--rbq-ok); background: rgba(63, 185, 80, 0.05); border-radius: 0 6px 6px 0; }
+.rbq-place-head { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
+.rbq-place-name { font-weight: 600; font-size: 13.5px; }
+.rbq-place-meta { color: var(--rbq-text-dim); font-size: 12.5px; margin-top: 2px; }
+.rbq-spoiler { margin-top: 5px; }
+.rbq-spoiler summary { cursor: pointer; color: var(--rbq-text-mut); font-size: 12px; }
+.rbq-spoiler summary:hover { color: var(--rbq-text-dim); }
+
+.rbq-chips { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 5px; }
+.rbq-chip {
+  font-size: 11.5px; padding: 2px 8px; border-radius: 10px;
+  background: var(--rbq-bg-sunken); border: 1px solid var(--rbq-border); color: var(--rbq-text-dim);
+}
+.rbq-chip-warn { border-color: rgba(210, 153, 34, 0.45); color: var(--rbq-warn); }
+
+/* ---- 骰子 ---- */
+.rbq-dice-result { margin-top: 10px; }
+
+/* ---- 行动选项 ---- */
+.rbq-option-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.rbq-option-card {
+  border: 1px solid var(--rbq-border); border-radius: 10px; padding: 11px 13px; cursor: pointer;
+  background: var(--rbq-bg-elev); transition: all 0.15s ease;
+}
+.rbq-option-card:hover { border-color: var(--rbq-accent); transform: translateY(-1px); }
+.rbq-option-dir { font-weight: 600; color: var(--rbq-accent); margin-bottom: 5px; font-size: 12.5px; }
+.rbq-option-text { font-size: 12.5px; color: var(--rbq-text); line-height: 1.65; }
+
+/* 消息内注入的选项按钮（与旧版手感一致） */
+.rbq-options-container {
+  display: flex; flex-direction: column; gap: 4px; margin-top: 8px; padding-top: 8px;
+  border-top: 1px dashed var(--rbq-border);
+}
+.rbq-option-btn {
+  text-align: left; cursor: pointer; font: inherit; font-size: 12.5px; line-height: 1.5;
+  padding: 6px 10px; border-radius: 7px; color: var(--rbq-text);
+  background: var(--rbq-bg-elev); border: 1px solid var(--rbq-border);
+}
+.rbq-option-btn:hover { border-color: var(--rbq-accent); background: rgba(157, 139, 108, 0.10); }
+.rbq-option-btn b { color: var(--rbq-accent); margin-right: 7px; }
+.rbq-option-btn span { color: var(--rbq-text-dim); }
+
+@media (max-width: 720px) {
+  .rbq-dossier { flex-direction: column; }
+  .rbq-dossier-list { width: 100%; max-height: 130px; display: flex; gap: 4px; overflow-x: auto; }
+  .rbq-dossier-item { flex-direction: column; min-width: 62px; }
+  .rbq-option-cards { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 720px) {
+  #rbq-panel { width: 100vw; height: 82vh; left: 0; top: auto; bottom: 0; border-radius: 12px 12px 0 0; }
+  .rbq-tablelist { width: 130px; }
+  .rbq-row label { min-width: 100%; }
+}
+
+/* ==========================================================================
+   视图层 · 卡片体系（任务/背包/装备/技能/敌人/势力/纪事/记忆）
+   ========================================================================== */
+
+.rbq-section { margin: 14px 0 8px; font-size: 13px; font-weight: 600; color: var(--rbq-text-dim); }
+.rbq-cardgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(268px, 1fr)); gap: 10px; }
+.rbq-cardgrid-tight { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+
+.rbq-tile {
+  border: 1px solid var(--rbq-border); border-left: 3px solid var(--rbq-border-strong);
+  border-radius: 10px; padding: 11px 13px; background: var(--rbq-bg-elev);
+}
+.rbq-tile.rbq-ok { border-left-color: var(--rbq-ok); }
+.rbq-tile.rbq-info { border-left-color: #58a6ff; }
+.rbq-tile.rbq-warn { border-left-color: var(--rbq-warn); }
+.rbq-tile.rbq-danger { border-left-color: var(--rbq-danger); }
+
+.rbq-tile-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.rbq-tile-title { font-weight: 600; font-size: 13.5px; }
+.rbq-tile-meta { display: flex; gap: 9px; flex-wrap: wrap; color: var(--rbq-text-mut); font-size: 11.5px; margin-top: 4px; }
+.rbq-tile-body { font-size: 12.5px; line-height: 1.7; margin-top: 6px; }
+.rbq-tile .rbq-stat { margin-top: 8px; }
+
+.rbq-badge.rbq-info { background: rgba(88, 166, 255, 0.16); color: #58a6ff; }
+
+/* 稀有度 */
+.rbq-r-common { }
+.rbq-r-uncommon { border-left-color: #3fb950 !important; }
+.rbq-r-rare { border-left-color: #58a6ff !important; }
+.rbq-r-epic { border-left-color: #a371f7 !important; }
+.rbq-r-legend { border-left-color: #f0b429 !important; box-shadow: 0 0 0 1px rgba(240, 180, 41, 0.18) inset; }
+
+/* 物品格 */
+.rbq-item { display: flex; gap: 9px; border: 1px solid var(--rbq-border); border-left: 3px solid var(--rbq-border-strong); border-radius: 9px; padding: 9px 11px; background: var(--rbq-bg-elev); }
+.rbq-item-icon { font-size: 20px; line-height: 1; flex-shrink: 0; width: 24px; text-align: center; }
+.rbq-item-main { min-width: 0; flex: 1; }
+.rbq-chip-mp { border-color: rgba(88, 166, 255, 0.4); color: #58a6ff; }
+.rbq-chip-sp { border-color: rgba(63, 185, 80, 0.4); color: var(--rbq-ok); }
+
+/* 装备栏 */
+.rbq-slotgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 8px; }
+.rbq-slot { border: 1px dashed var(--rbq-border); border-radius: 9px; padding: 9px 11px; min-height: 74px; }
+.rbq-slot-on { border-style: solid; border-color: var(--rbq-accent); background: rgba(157, 139, 108, 0.07); }
+.rbq-slot-name { font-size: 11.5px; color: var(--rbq-text-mut); margin-bottom: 5px; }
+.rbq-slot-item { display: flex; flex-direction: column; gap: 3px; }
+
+/* 时间线 */
+.rbq-timeline { position: relative; margin-left: 12px; padding-left: 18px; border-left: 2px solid var(--rbq-border); }
+.rbq-tl-item { position: relative; padding: 0 0 16px 0; }
+.rbq-tl-dot { position: absolute; left: -27px; top: 1px; width: 19px; height: 19px; border-radius: 50%; background: var(--rbq-bg-elev); border: 2px solid var(--rbq-accent); display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--rbq-accent); }
+.rbq-tl-body { border: 1px solid var(--rbq-border); border-radius: 9px; padding: 9px 12px; background: var(--rbq-bg-elev); }
+.rbq-tl-summary { font-size: 12.5px; line-height: 1.75; margin-top: 5px; color: var(--rbq-text); }
+
+/* 记忆条目 */
+.rbq-mem-item { border-top: 1px dashed var(--rbq-border); padding: 8px 0; }
+.rbq-mem-item:first-of-type { border-top: none; }
+.rbq-mem-head { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; }
+.rbq-mem-body { font-size: 12.5px; line-height: 1.75; color: var(--rbq-text-dim); }
+.rbq-mem-body b { color: var(--rbq-accent); font-weight: 500; }
+
+.rbq-viewnav { max-height: 76px; overflow-y: auto; }
+/* ---- 修空状态被挤成竖排一列的问题 ---- */
+.rbq-viewhost { display: block; }
+.rbq-viewhost > * { max-width: 100%; }
+.rbq-empty { display: block; width: 100%; box-sizing: border-box; overflow-wrap: break-word; }
+
+/* ---- 空间地图 ---- */
+.rbq-map-layout { display: flex; gap: 12px; align-items: flex-start; }
+.rbq-map-wrap { flex: 1; min-width: 0; background: var(--rbq-bg-sunken); border: 1px solid var(--rbq-border); border-radius: 12px; overflow: hidden; }
+.rbq-map-svg { width: 100%; height: auto; max-height: 520px; display: block; cursor: grab; }
+.rbq-map-svg:active { cursor: grabbing; }
+.rbq-map-zone { fill: rgba(157, 139, 108, 0.05); stroke: var(--rbq-border); stroke-width: 1.5; stroke-dasharray: 7 6; }
+.rbq-map-zone-label { fill: var(--rbq-text-mut); font-size: 12px; letter-spacing: 0.5px; }
+.rbq-map-node { fill: rgba(15, 17, 23, 0.92); stroke: var(--rbq-border-strong); stroke-width: 1.6; }
+.rbq-map-poi-here .rbq-map-node { stroke: var(--rbq-ok); stroke-width: 2.4; }
+.rbq-map-icon { text-anchor: middle; font-size: 13px; }
+.rbq-map-label { text-anchor: middle; fill: var(--rbq-text-dim); font-size: 11.5px; }
+.rbq-map-label-here { fill: var(--rbq-ok); font-weight: 600; }
+.rbq-map-road { stroke: rgba(157, 139, 108, 0.55); stroke-width: 1.2; }
+.rbq-map-trail { stroke: var(--rbq-border-strong); stroke-width: 1; fill: none; stroke-dasharray: 4 4; }
+.rbq-map-longroad { stroke: rgba(210, 153, 34, 0.45); stroke-width: 1.4; fill: none; stroke-dasharray: 9 7; }
+.rbq-map-pulse { fill: none; stroke: var(--rbq-ok); stroke-width: 1.4; opacity: 0.75; animation: rbq-map-pulse 2.4s ease-out infinite; }
+.rbq-map-pulse-b { animation-delay: 1.2s; }
+@keyframes rbq-map-pulse { 0% { r: 12; opacity: 0.8; } 100% { r: 30; opacity: 0; } }
+.rbq-map-poi:hover .rbq-map-node { stroke: var(--rbq-accent); }
+.rbq-map-poi-sel .rbq-map-node { stroke: var(--rbq-accent); stroke-width: 2.6; }
+.rbq-map-detail { width: 280px; flex-shrink: 0; border: 1px solid var(--rbq-border); border-radius: 10px; padding: 12px 14px; background: var(--rbq-bg-elev); }
+.rbq-map-detail-head { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+.rbq-map-detail-icon { font-size: 26px; line-height: 1; }
+.rbq-map-detail-title { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.rbq-map-detail-decor { font-size: 12.5px; line-height: 1.75; color: var(--rbq-text-dim); margin: 8px 0; }
+
+/* ---- 关系图（升级版） ---- */
+.rbq-graph-layout { display: flex; gap: 12px; align-items: flex-start; }
+.rbq-graph-layout .rbq-relations-wrap { flex: 1; min-width: 0; }
+.rbq-graph-side { width: 268px; flex-shrink: 0; max-height: 520px; overflow-y: auto; }
+.rbq-graph-side-head { display: flex; align-items: baseline; gap: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--rbq-border); }
+.rbq-graph-side-head strong { font-size: 14px; }
+.rbq-rel-row { display: flex; align-items: center; gap: 7px; padding: 4px 0; font-size: 12.5px; }
+.rbq-rel-tone { width: 3px; height: 15px; border-radius: 2px; flex-shrink: 0; }
+.rbq-rel-who { font-weight: 500; }
+.rbq-rel-tag { color: var(--rbq-text-dim); }
+.rbq-graph-node .rbq-node-ring { fill: rgba(15, 17, 23, 0.6); stroke: var(--rbq-border-strong); stroke-width: 1.6; }
+.rbq-graph-node .rbq-node-present { stroke: var(--rbq-ok); }
+.rbq-node-face { fill: rgba(157, 139, 108, 0.2); stroke: none; }
+.rbq-node-initial { text-anchor: middle; fill: var(--rbq-accent); font-size: 17px; font-weight: 600; }
+.rbq-node-dot { fill: var(--rbq-ok); }
+.rbq-graph-node .rbq-node-label { text-anchor: middle; fill: var(--rbq-text); font-size: 12.5px; }
+.rbq-graph-node:hover .rbq-node-ring { stroke: var(--rbq-accent); }
+.rbq-graph-edge.rbq-dim, .rbq-graph-node.rbq-dim { opacity: 0.12; }
+.rbq-graph-edge, .rbq-graph-node { transition: opacity 0.18s ease; }
+
+/* ---- 背包方格 ---- */
+.rbq-catbar { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 10px; }
+.rbq-catchip { font: inherit; font-size: 11.5px; padding: 3px 10px; border-radius: 12px; cursor: pointer; background: transparent; border: 1px solid var(--rbq-border); color: var(--rbq-text-dim); }
+.rbq-catchip:hover { color: var(--rbq-text); border-color: var(--rbq-border-strong); }
+.rbq-catchip.rbq-active { border-color: var(--rbq-accent); color: var(--rbq-accent); background: rgba(157, 139, 108, 0.14); }
+.rbq-inv-layout { display: flex; gap: 12px; align-items: flex-start; }
+.rbq-invgrid { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 8px; }
+.rbq-invslot {
+  position: relative; aspect-ratio: 1 / 1; border: 2px solid var(--rbq-border-strong); border-radius: 10px;
+  background: linear-gradient(160deg, rgba(255,255,255,0.05), rgba(0,0,0,0.18));
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  cursor: pointer; padding: 5px; overflow: hidden; transition: transform 0.12s ease, border-color 0.12s ease;
+}
+.rbq-invslot:hover { transform: translateY(-2px); border-color: var(--rbq-accent); }
+.rbq-invslot.rbq-selected { border-color: var(--rbq-accent); box-shadow: 0 0 0 2px rgba(157, 139, 108, 0.28); }
+.rbq-invslot-icon { font-size: 24px; line-height: 1; }
+.rbq-invslot-name { font-size: 10.5px; color: var(--rbq-text-dim); text-align: center; line-height: 1.25; max-height: 26px; overflow: hidden; }
+.rbq-invslot-qty { position: absolute; right: 3px; bottom: 3px; font-size: 10.5px; font-weight: 700; color: var(--rbq-text); background: rgba(0,0,0,0.55); border-radius: 6px; padding: 0 4px; }
+.rbq-invslot-worn { position: absolute; left: 3px; top: 3px; font-size: 9.5px; font-weight: 700; color: var(--rbq-bg); background: var(--rbq-ok); border-radius: 4px; padding: 0 4px; }
+.rbq-invslot-badge { position: absolute; left: 3px; top: 3px; font-size: 9.5px; color: var(--rbq-text-dim); background: rgba(0,0,0,0.5); border-radius: 4px; padding: 0 4px; }
+.rbq-invslot-bar { position: absolute; left: 0; bottom: 0; height: 3px; background: var(--rbq-ok); }
+.rbq-invslot-bar.rbq-low { background: var(--rbq-danger); }
+.rbq-invdetail { width: 262px; flex-shrink: 0; border: 1px solid var(--rbq-border); border-radius: 10px; padding: 12px 14px; background: var(--rbq-bg-elev); }
+.rbq-invdetail-head { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; padding-left: 8px; border-left: 3px solid var(--rbq-border-strong); }
+.rbq-invdetail-icon { font-size: 26px; line-height: 1; }
+.rbq-invdetail-bonus { font-size: 12.5px; color: var(--rbq-accent); margin: 8px 0; }
+/* 稀有度描边（背包格 / 装备贴片通用） */
+.rbq-invslot.rbq-r-common, .rbq-invdetail-head.rbq-r-common, .rbq-doll-item.rbq-r-common { border-color: var(--rbq-border-strong); }
+.rbq-invslot.rbq-r-uncommon, .rbq-invdetail-head.rbq-r-uncommon, .rbq-doll-item.rbq-r-uncommon { border-color: #3fb950; }
+.rbq-invslot.rbq-r-rare, .rbq-invdetail-head.rbq-r-rare, .rbq-doll-item.rbq-r-rare { border-color: #58a6ff; }
+.rbq-invslot.rbq-r-epic, .rbq-invdetail-head.rbq-r-epic, .rbq-doll-item.rbq-r-epic { border-color: #a371f7; }
+.rbq-invslot.rbq-r-legend, .rbq-invdetail-head.rbq-r-legend, .rbq-doll-item.rbq-r-legend { border-color: #f0b429; box-shadow: 0 0 8px rgba(240,180,41,0.2) inset; }
+
+/* ---- 装备纸娃娃 ---- */
+.rbq-doll { display: flex; gap: 14px; align-items: flex-start; justify-content: center; padding: 14px 0; }
+.rbq-doll-col { display: flex; flex-direction: column; gap: 10px; width: 168px; }
+.rbq-doll-bodywrap { position: relative; width: 300px; flex-shrink: 0; }
+.rbq-doll-svg { position: absolute; left: 50%; top: 0; transform: translateX(-50%); width: 190px; height: 340px; opacity: 0.5; pointer-events: none; }
+.rbq-doll-body { fill: rgba(157, 139, 108, 0.10); stroke: var(--rbq-border-strong); stroke-width: 1.4; }
+.rbq-doll-marker { position: absolute; left: 50%; transform: translateX(-50%); width: 176px; }
+.rbq-doll-slot { border: 1.5px dashed var(--rbq-border); border-radius: 9px; padding: 7px 9px; min-height: 52px; background: rgba(0,0,0,0.12); }
+.rbq-doll-slot.rbq-filled { border-style: solid; border-color: var(--rbq-border-strong); background: var(--rbq-bg-elev); }
+.rbq-doll-slot-label { font-size: 10.5px; color: var(--rbq-text-mut); margin-bottom: 3px; }
+.rbq-doll-empty { font-size: 11.5px; color: var(--rbq-text-mut); }
+.rbq-doll-item { display: flex; gap: 7px; align-items: center; border-left: 3px solid var(--rbq-border-strong); padding-left: 7px; }
+.rbq-doll-item-icon { font-size: 18px; }
+.rbq-doll-item-main { min-width: 0; flex: 1; }
+.rbq-doll-item-name { font-size: 12.5px; font-weight: 600; }
+.rbq-doll-dura { height: 3px; border-radius: 2px; background: var(--rbq-bg-sunken); margin-top: 4px; overflow: hidden; }
+.rbq-doll-dura-fill { height: 100%; background: var(--rbq-ok); }
+.rbq-doll-dura-fill.rbq-low { background: var(--rbq-danger); }
+
+@media (max-width: 720px) {
+  .rbq-map-layout, .rbq-graph-layout, .rbq-inv-layout, .rbq-doll { flex-direction: column; }
+  .rbq-map-detail, .rbq-graph-side, .rbq-invdetail, .rbq-doll-col, .rbq-doll-bodywrap { width: 100%; }
+}
+
+/* ==========================================================================
+   沉浸式仪表盘（顶部状态条 / 大视口 / 行动选项 / 任务条 / 角色坞 / 角色卡）
+   ========================================================================== */
+
+.rbq-hud { display: flex; flex-direction: column; gap: 10px; }
+
+/* ---- 顶部状态条 ---- */
+.rbq-hud-top { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--rbq-border); border-radius: 12px; background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(0,0,0,0.16)); }
+.rbq-hud-medal { position: relative; width: 46px; height: 46px; flex-shrink: 0; border-radius: 50%; border: 2px solid var(--rbq-accent); background: radial-gradient(circle at 35% 30%, rgba(157, 139, 108, 0.42), rgba(0,0,0,0.5)); display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
+.rbq-hud-medal-num { font-size: 17px; font-weight: 700; color: #fff; }
+.rbq-hud-medal-cap { font-size: 9.5px; color: var(--rbq-text-dim); margin-top: 2px; }
+.rbq-hud-where { min-width: 0; flex: 1; }
+.rbq-hud-place { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rbq-hud-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.rbq-hud-chip { font-size: 11.5px; padding: 1px 8px; border-radius: 10px; background: rgba(255,255,255,0.055); border: 1px solid var(--rbq-border); color: var(--rbq-text-dim); max-width: 240px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rbq-hud-chip-law { border-color: rgba(240,180,41,0.4); color: #f0b429; }
+.rbq-icon-btn { width: 30px; height: 30px; flex-shrink: 0; border-radius: 8px; border: 1px solid var(--rbq-border); background: transparent; color: var(--rbq-text-dim); cursor: pointer; font-size: 14px; line-height: 1; }
+.rbq-icon-btn:hover { color: var(--rbq-text); border-color: var(--rbq-border-strong); }
+
+/* ---- 视口切换 ---- */
+.rbq-hud-tabs { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 2px; }
+.rbq-hud-tab { flex: 0 0 auto; font: inherit; font-size: 12px; padding: 4px 11px; border-radius: 14px; cursor: pointer; border: 1px solid transparent; background: transparent; color: var(--rbq-text-mut); }
+.rbq-hud-tab:hover { color: var(--rbq-text); background: rgba(255,255,255,0.05); }
+.rbq-hud-tab.rbq-active { color: var(--rbq-accent); border-color: var(--rbq-accent); background: rgba(157, 139, 108, 0.14); }
+
+/* ---- 大视口 ---- */
+.rbq-hud-viewport { border: 1px solid var(--rbq-border); border-radius: 14px; background: radial-gradient(120% 90% at 50% 0%, rgba(157, 139, 108, 0.07), rgba(0,0,0,0.28)); padding: 12px; min-height: 260px; }
+.rbq-hud-viewport .rbq-viewhost, .rbq-hud-viewport .rbq-scroll { max-height: none; overflow: visible; }
+
+/* ---- 行动选项 ---- */
+.rbq-hud-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.rbq-hud-option { display: flex; align-items: flex-start; gap: 9px; text-align: left; font: inherit; font-size: 12.5px; line-height: 1.55; padding: 9px 11px; border-radius: 10px; cursor: pointer; background: var(--rbq-bg-elev); border: 1px solid var(--rbq-border); color: var(--rbq-text); }
+.rbq-hud-option:hover { border-color: var(--rbq-accent); background: rgba(157, 139, 108, 0.1); }
+.rbq-hud-option-key { flex-shrink: 0; width: 19px; height: 19px; border-radius: 5px; background: rgba(157, 139, 108, 0.2); color: var(--rbq-accent); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.rbq-hud-option-text { flex: 1; min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.rbq-hud-option-empty { grid-column: 1 / -1; font-size: 12px; color: var(--rbq-text-mut); padding: 9px 11px; border: 1px dashed var(--rbq-border); border-radius: 10px; text-align: center; }
+
+/* ---- 任务条 ---- */
+.rbq-hud-quests { display: flex; flex-direction: column; gap: 5px; }
+.rbq-hud-quest { display: flex; align-items: center; gap: 9px; padding: 7px 11px; border-radius: 9px; background: rgba(240,180,41,0.06); border: 1px solid rgba(240,180,41,0.22); }
+.rbq-hud-quest-icon { color: #f0b429; font-size: 14px; }
+.rbq-hud-quest-main { min-width: 0; flex: 1; }
+.rbq-hud-quest-head { display: flex; align-items: center; gap: 7px; }
+.rbq-hud-quest-name { font-size: 12.5px; font-weight: 600; }
+.rbq-hud-quest-cat { font-size: 10.5px; padding: 0 6px; border-radius: 8px; border: 1px solid rgba(240,180,41,0.4); color: #f0b429; }
+.rbq-hud-quest-sub { font-size: 11.5px; color: var(--rbq-text-mut); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rbq-hud-quest-empty { font-size: 12px; color: var(--rbq-text-mut); padding: 7px 11px; border: 1px dashed var(--rbq-border); border-radius: 9px; text-align: center; }
+
+/* ---- 角色坞 ---- */
+.rbq-hud-dock { display: flex; gap: 10px; overflow-x: auto; padding: 4px 2px 8px; }
+.rbq-hud-portrait { position: relative; flex: 0 0 auto; width: 54px; border: none; background: none; padding: 0; cursor: pointer; }
+.rbq-hud-portrait img, .rbq-hud-portrait-fallback { display: block; width: 50px; height: 50px; border-radius: 50%; object-fit: cover; border: 2px solid var(--rbq-border-strong); filter: grayscale(0.6) brightness(0.85); }
+.rbq-hud-portrait.rbq-present img, .rbq-hud-portrait.rbq-present .rbq-hud-portrait-fallback { filter: none; border-color: var(--rbq-ok); }
+.rbq-hud-portrait.rbq-selected img, .rbq-hud-portrait.rbq-selected .rbq-hud-portrait-fallback { border-color: var(--rbq-accent); box-shadow: 0 0 0 2px rgba(157, 139, 108, 0.3); }
+.rbq-hud-portrait-fallback { display: flex; align-items: center; justify-content: center; background: rgba(157, 139, 108, 0.22); color: var(--rbq-accent); font-weight: 700; font-size: 19px; }
+.rbq-hud-hpbar { display: block; height: 4px; margin-top: 3px; border-radius: 2px; background: rgba(0,0,0,0.45); overflow: hidden; }
+.rbq-hud-hpbar i { display: block; height: 100%; background: linear-gradient(90deg, #e0555c, #f85149); }
+.rbq-hud-lv { display: block; text-align: center; font-size: 9.5px; color: var(--rbq-text-mut); margin-top: 1px; }
+.rbq-hud-live { position: absolute; right: 2px; top: 0; width: 9px; height: 9px; border-radius: 50%; background: var(--rbq-ok); border: 2px solid var(--rbq-bg); }
+.rbq-hud-portrait:hover img, .rbq-hud-portrait:hover .rbq-hud-portrait-fallback { border-color: var(--rbq-accent); }
+
+/* ---- 角色卡浮层 ---- */
+.rbq-cc-overlay { position: fixed; inset: 0; background: rgba(6,7,11,0.62); backdrop-filter: blur(2px); z-index: 30020; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.rbq-cc-panel { width: 100%; max-width: 560px; max-height: 84vh; overflow-y: auto; background: var(--rbq-bg-elev); border: 1px solid var(--rbq-border-strong); border-radius: 16px; padding: 16px 18px 20px; box-shadow: 0 18px 60px rgba(0,0,0,0.6); }
+.rbq-cc-head { display: flex; gap: 13px; align-items: flex-start; padding-bottom: 12px; border-bottom: 1px solid var(--rbq-border); }
+.rbq-cc-portrait { width: 68px; height: 68px; border-radius: 14px; object-fit: cover; flex-shrink: 0; border: 2px solid var(--rbq-border-strong); }
+.rbq-cc-portrait-fallback { display: flex; align-items: center; justify-content: center; background: rgba(157, 139, 108, 0.2); color: var(--rbq-accent); font-size: 28px; font-weight: 700; }
+.rbq-cc-ident { flex: 1; min-width: 0; }
+.rbq-cc-name { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rbq-cc-name strong { font-size: 19px; }
+.rbq-cc-level { font-size: 11.5px; font-weight: 700; padding: 1px 8px; border-radius: 9px; background: rgba(240,180,41,0.16); color: #f0b429; }
+.rbq-cc-sub { font-size: 12.5px; color: var(--rbq-text-dim); margin-top: 3px; }
+.rbq-cc-job { font-size: 12.5px; color: var(--rbq-accent); margin-top: 2px; }
+.rbq-cc-vitals { display: flex; gap: 10px; margin: 12px 0; }
+.rbq-cc-bar { flex: 1; min-width: 0; }
+.rbq-cc-bar-top { display: flex; justify-content: space-between; font-size: 11px; color: var(--rbq-text-dim); margin-bottom: 3px; }
+.rbq-cc-bar-top i { font-style: normal; color: var(--rbq-text-mut); }
+.rbq-cc-bar-track { height: 7px; border-radius: 4px; background: var(--rbq-bg-sunken); overflow: hidden; }
+.rbq-cc-bar-fill { height: 100%; border-radius: 4px; background: var(--rbq-accent); }
+.rbq-cc-bar-fill.rbq-hp { background: linear-gradient(90deg, #e0555c, #f85149); }
+.rbq-cc-bar-fill.rbq-mp { background: linear-gradient(90deg, #4a7de0, #58a6ff); }
+.rbq-cc-bar-fill.rbq-sp { background: linear-gradient(90deg, #3fb950, #56d364); }
+.rbq-cc-section { margin-top: 13px; }
+.rbq-cc-section-title { font-size: 12px; color: var(--rbq-text-mut); font-weight: 600; margin: 0 0 7px; letter-spacing: 0.4px; }
+.rbq-cc-sub-title { font-size: 11.5px; color: var(--rbq-accent); margin: 10px 0 4px; }
+.rbq-cc-attrs { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 7px; }
+.rbq-cc-attr { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; border-radius: 9px; background: var(--rbq-bg-sunken); border: 1px solid var(--rbq-border); }
+.rbq-cc-attr-label { font-size: 10.5px; color: var(--rbq-text-mut); }
+.rbq-cc-attr-value { font-size: 18px; font-weight: 700; color: var(--rbq-text); }
+.rbq-cc-attr-value.rbq-small { font-size: 11.5px; font-weight: 400; }
+.rbq-cc-derived { display: flex; flex-wrap: wrap; gap: 6px; }
+.rbq-cc-der { display: flex; align-items: center; gap: 5px; font-size: 11.5px; padding: 3px 9px; border-radius: 9px; background: rgba(255,255,255,0.05); border: 1px solid var(--rbq-border); }
+.rbq-cc-der b { font-weight: 500; color: var(--rbq-text-mut); }
+.rbq-cc-der span { font-weight: 700; color: var(--rbq-text); }
+.rbq-cc-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.rbq-tag { font-size: 11.5px; padding: 3px 10px; border-radius: 11px; cursor: default; border: 1px solid var(--rbq-border-strong); background: rgba(255,255,255,0.045); color: var(--rbq-text-dim); }
+.rbq-tag-ok { border-color: rgba(63,185,80,0.45); color: var(--rbq-ok); }
+.rbq-tag-danger { border-color: rgba(248,81,73,0.45); color: var(--rbq-danger); }
+.rbq-tag-skill { cursor: pointer; border-color: rgba(157, 139, 108, 0.45); color: var(--rbq-accent); }
+.rbq-tag-skill:hover { background: rgba(157, 139, 108, 0.16); }
+.rbq-cc-detail { margin-top: 8px; padding: 9px 11px; border-radius: 9px; background: var(--rbq-bg-sunken); border: 1px solid var(--rbq-border); }
+.rbq-cc-detail-title { font-size: 12.5px; font-weight: 600; color: var(--rbq-accent); margin-bottom: 5px; }
+.rbq-cc-equip { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 6px; }
+.rbq-cc-slot { display: flex; flex-direction: column; gap: 2px; padding: 6px 9px; border-radius: 8px; border: 1px dashed var(--rbq-border); }
+.rbq-cc-slot.rbq-filled { border-style: solid; border-color: var(--rbq-border-strong); background: rgba(255,255,255,0.035); }
+.rbq-cc-slot-name { font-size: 10px; color: var(--rbq-text-mut); }
+.rbq-cc-slot-item { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rbq-cc-slot-empty { font-size: 11.5px; color: var(--rbq-text-mut); }
+.rbq-cc-rel { display: flex; flex-direction: column; gap: 4px; }
+.rbq-cc-rel-row { display: flex; align-items: center; gap: 7px; font-size: 12.5px; }
+.rbq-cc-rel-dir { color: var(--rbq-accent); font-weight: 700; }
+.rbq-cc-rel-who { cursor: pointer; border-bottom: 1px dashed var(--rbq-border-strong); }
+.rbq-cc-rel-who:hover { color: var(--rbq-accent); border-color: var(--rbq-accent); }
+.rbq-cc-rel-tag { color: var(--rbq-text-dim); }
+.rbq-dim-row { opacity: 0.72; }
+.rbq-cc-mem { display: flex; flex-direction: column; gap: 6px; }
+.rbq-cc-mem-item { display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px; line-height: 1.7; color: var(--rbq-text-dim); }
+.rbq-cc-more { margin-top: 13px; }
+.rbq-cc-more summary { cursor: pointer; font-size: 12px; color: var(--rbq-text-mut); }
+.rbq-cc-more summary:hover { color: var(--rbq-text-dim); }
+.rbq-cc-bg { font-size: 12.5px; line-height: 1.8; color: var(--rbq-text-dim); }
+
+@media (max-width: 620px) {
+  .rbq-hud-options { grid-template-columns: 1fr; }
+  .rbq-cc-panel { max-width: 100%; }
+}
+
+/* ==========================================================================
+   图形化视口：任务看板 / 技能轮盘 / 威胁牌 / 阵营图 / 年代带 + 主题背景
+   ========================================================================== */
+
+/* 动态背景（纯 CSS，不加载外部资源） */
+#rbq-panel[data-rbq-dynamic-bg="on"]::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  background-image: var(--rbq-bg-image, none);
+  opacity: 0.9;
+  animation: rbq-drift 26s ease-in-out infinite alternate;
+}
+@keyframes rbq-drift { from { transform: translate3d(0,0,0) scale(1); } to { transform: translate3d(-2%, -1.5%, 0) scale(1.06); } }
+#rbq-panel .rbq-body, #rbq-panel .rbq-tabs, #rbq-panel .rbq-header { position: relative; z-index: 1; }
+
+/* ---- 任务看板 ---- */
+.rbq-kanban { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; align-items: start; }
+.rbq-lane { border: 1px solid var(--rbq-border); border-radius: 12px; padding: 9px; background: rgba(0,0,0,0.14); min-height: 120px; }
+.rbq-lane-active { border-top: 3px solid var(--rbq-accent); }
+.rbq-lane-paused { border-top: 3px solid var(--rbq-warn); }
+.rbq-lane-done { border-top: 3px solid var(--rbq-ok); }
+.rbq-lane-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.rbq-lane-title { font-size: 12.5px; font-weight: 600; color: var(--rbq-text-dim); }
+.rbq-lane-count { font-size: 11px; color: var(--rbq-text-mut); background: var(--rbq-bg-sunken); border-radius: 9px; padding: 0 7px; }
+.rbq-lane-empty { font-size: 11.5px; color: var(--rbq-text-mut); text-align: center; padding: 10px 0; }
+.rbq-qcard { border: 1px solid var(--rbq-border); border-radius: 10px; padding: 9px 10px; background: var(--rbq-bg-elev); margin-bottom: 8px; }
+.rbq-qcard-top { display: flex; gap: 9px; align-items: center; }
+.rbq-qcard-body { min-width: 0; flex: 1; }
+.rbq-qcard-name { font-size: 13px; font-weight: 600; }
+.rbq-qcard-meta { font-size: 11px; color: var(--rbq-text-mut); margin-top: 2px; }
+.rbq-qcard-goal { font-size: 12px; line-height: 1.65; color: var(--rbq-text-dim); margin-top: 6px; }
+.rbq-ring { flex-shrink: 0; }
+.rbq-ring-bg { fill: none; stroke: var(--rbq-border); stroke-width: 3; }
+.rbq-ring-fg { fill: none; stroke: var(--rbq-accent); stroke-width: 3; stroke-linecap: round; transition: stroke-dasharray 0.3s; }
+.rbq-ring-text { text-anchor: middle; font-size: 10px; fill: var(--rbq-text-dim); }
+
+/* ---- 轮盘（技能 / 阵营共用外壳） ---- */
+.rbq-wheel-layout { display: flex; gap: 12px; align-items: flex-start; }
+.rbq-wheel-wrap { flex: 1; min-width: 0; background: var(--rbq-bg-sunken); border: 1px solid var(--rbq-border); border-radius: 12px; }
+.rbq-wheel-svg, .rbq-web-svg { width: 100%; height: auto; display: block; }
+.rbq-wheel-core { fill: rgba(157, 139, 108, 0.16); stroke: var(--rbq-accent); stroke-width: 1.6; }
+.rbq-wheel-core-text { text-anchor: middle; fill: var(--rbq-text); font-size: 13px; }
+.rbq-wheel-spoke { stroke: var(--rbq-border); stroke-width: 1; }
+.rbq-wheel-dot { fill: rgba(15,17,23,0.9); stroke: var(--rbq-border-strong); stroke-width: 1.6; }
+.rbq-wheel-node:hover .rbq-wheel-dot, .rbq-wheel-node.rbq-sel .rbq-wheel-dot { stroke: var(--rbq-accent); stroke-width: 2.4; }
+.rbq-wheel-label { text-anchor: middle; fill: var(--rbq-text-dim); font-size: 11px; }
+.rbq-wheel-node.rbq-sel .rbq-wheel-label { fill: var(--rbq-accent); }
+.rbq-wheel-detail, .rbq-web-detail { width: 246px; flex-shrink: 0; max-height: 420px; overflow-y: auto; border: 1px solid var(--rbq-border); border-radius: 10px; padding: 11px 13px; background: var(--rbq-bg-elev); }
+.rbq-wheel-detail-title { font-size: 13.5px; font-weight: 600; color: var(--rbq-accent); margin-bottom: 7px; }
+
+/* ---- 威胁牌 ---- */
+.rbq-threats { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+.rbq-threat { border: 1px solid var(--rbq-border); border-left: 4px solid var(--rbq-border-strong); border-radius: 11px; padding: 11px 13px; background: var(--rbq-bg-elev); }
+.rbq-threat.rbq-danger-high { border-left-color: var(--rbq-danger); }
+.rbq-threat.rbq-danger-mid { border-left-color: var(--rbq-warn); }
+.rbq-threat.rbq-danger-low { border-left-color: var(--rbq-ok); }
+.rbq-threat-head { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 8px; }
+.rbq-threat-name { font-size: 14px; font-weight: 600; }
+.rbq-threat-hp { position: relative; height: 16px; border-radius: 8px; background: var(--rbq-bg-sunken); overflow: hidden; }
+.rbq-threat-hp-fill { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #7a1f1a, #f85149); }
+.rbq-threat-hp-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.6); }
+.rbq-threat-meter { height: 4px; border-radius: 2px; background: var(--rbq-bg-sunken); margin: 6px 0 8px; overflow: hidden; }
+.rbq-threat-meter span { display: block; height: 100%; background: linear-gradient(90deg, #d29922, #f85149); }
+
+/* ---- 阵营图 ---- */
+.rbq-web-me { fill: rgba(157, 139, 108, 0.2); stroke: var(--rbq-accent); stroke-width: 2; }
+.rbq-web-me-text { text-anchor: middle; fill: var(--rbq-text); font-size: 13px; font-weight: 600; }
+.rbq-web-edge { stroke-width: 1.6; stroke-dasharray: 6 5; }
+.rbq-web-edge.rbq-ally { stroke: rgba(63,185,80,0.7); }
+.rbq-web-edge.rbq-enemy { stroke: rgba(248,81,73,0.75); stroke-dasharray: none; }
+.rbq-web-edge.rbq-neutral { stroke: rgba(139,147,167,0.55); }
+.rbq-web-dot { fill: rgba(15,17,23,0.9); stroke-width: 2; }
+.rbq-web-node:hover .rbq-web-dot, .rbq-web-node.rbq-sel .rbq-web-dot { stroke-width: 3; }
+.rbq-web-label { text-anchor: middle; fill: var(--rbq-text); font-size: 11.5px; }
+.rbq-web-sub { text-anchor: middle; font-size: 10px; }
+
+/* ---- 年代带 ---- */
+.rbq-era-band { display: flex; gap: 4px; align-items: stretch; margin-bottom: 14px; }
+.rbq-era-seg { display: flex; gap: 8px; align-items: center; padding: 9px 11px; border-radius: 9px; border: 1px solid var(--rbq-border); background: linear-gradient(180deg, rgba(157, 139, 108, 0.12), rgba(0,0,0,0.16)); min-width: 0; }
+.rbq-era-idx { flex-shrink: 0; width: 21px; height: 21px; border-radius: 50%; background: rgba(157, 139, 108, 0.24); color: var(--rbq-accent); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.rbq-era-idx-body { min-width: 0; }
+.rbq-era-name { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rbq-era-span { font-size: 10.5px; color: var(--rbq-text-mut); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rbq-era-cards { display: flex; flex-direction: column; gap: 10px; }
+.rbq-era-card { border: 1px solid var(--rbq-border); border-left: 3px solid var(--rbq-accent); border-radius: 10px; padding: 10px 13px; background: var(--rbq-bg-elev); margin-left: 26px; }
+.rbq-era-card-alt { margin-left: 0; margin-right: 26px; border-left-color: var(--rbq-border-strong); border-right: 3px solid var(--rbq-accent); }
+.rbq-era-card-head { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; margin-bottom: 5px; }
+.rbq-era-summary { font-size: 12.5px; line-height: 1.8; color: var(--rbq-text-dim); }
+
+@media (max-width: 760px) {
+  .rbq-kanban { grid-template-columns: 1fr; }
+  .rbq-wheel-layout { flex-direction: column; }
+  .rbq-wheel-detail, .rbq-web-detail { width: 100%; max-height: none; }
+}
+
+/* ==========================================================================
+   再设计：英雄视口 / 罗盘切换 / 血环头像 / 变量库 / 正则工坊 / 收掉难看的空盒子
+   ========================================================================== */
+
+/* 空状态：一行小字，别再给一个大边框盒子 */
+.rbq-empty { padding: 18px 12px; border: none; background: none; color: var(--rbq-text-mut); font-size: 12.5px; }
+.rbq-empty code { background: rgba(255,255,255,0.06); }
+
+/* 英雄视口：撑满、暗角、像画布 */
+.rbq-hud-viewport { position: relative; min-height: 420px; display: flex; flex-direction: column; box-shadow: inset 0 0 100px rgba(0,0,0,0.55); }
+.rbq-hud-viewport::after {
+  content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: 14px;
+  background: radial-gradient(125% 100% at 50% 38%, transparent 50%, rgba(0,0,0,0.45) 100%);
+}
+.rbq-hud-vtitle {
+  display: flex; align-items: baseline; gap: 9px; margin: -2px 0 8px;
+  font-size: 13px; font-weight: 600; letter-spacing: 0.6px; color: var(--rbq-text);
+}
+.rbq-hud-vhint { font-size: 11px; font-weight: 400; color: var(--rbq-text-mut); }
+.rbq-hud { position: relative; }
+
+/* 罗盘浮钮 */
+.rbq-compass {
+  position: absolute; right: 16px; bottom: 16px; z-index: 6;
+  width: 50px; height: 50px; border-radius: 50%; cursor: pointer;
+  border: 2px solid var(--rbq-accent); color: var(--rbq-accent);
+  background: radial-gradient(circle at 34% 28%, rgba(157, 139, 108, 0.4), rgba(0,0,0,0.6));
+  font-size: 18px; line-height: 1; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 8px 26px rgba(0,0,0,0.55);
+  transition: transform 0.15s ease;
+}
+.rbq-compass:hover { transform: scale(1.07) rotate(12deg); }
+.rbq-compass-menu {
+  position: absolute; right: 16px; bottom: 76px; z-index: 7; display: none;
+  grid-template-columns: 1fr 1fr; gap: 4px; padding: 9px;
+  background: var(--rbq-bg-elev); border: 1px solid var(--rbq-border-strong); border-radius: 13px;
+  box-shadow: 0 16px 44px rgba(0,0,0,0.6); max-width: 330px;
+}
+.rbq-compass-menu.rbq-open { display: grid; }
+.rbq-compass-item { font: inherit; font-size: 11.5px; padding: 6px 10px; border-radius: 8px; cursor: pointer; text-align: left; border: 1px solid transparent; background: transparent; color: var(--rbq-text-dim); }
+.rbq-compass-item:hover { background: rgba(255,255,255,0.06); color: var(--rbq-text); }
+.rbq-compass-item.rbq-active { color: var(--rbq-accent); border-color: var(--rbq-accent); background: rgba(157, 139, 108, 0.15); }
+
+/* 角色坞：血环 + 大一点的头像 */
+.rbq-hud-portrait { width: 64px; }
+.rbq-hud-portrait img, .rbq-hud-portrait-fallback { width: 54px; height: 54px; }
+.rbq-hud-hpring { position: absolute; left: -5px; top: -5px; width: 64px; height: 64px; pointer-events: none; }
+.rbq-hud-hpring-bg { fill: none; stroke: rgba(0,0,0,0.55); stroke-width: 3; }
+.rbq-hud-hpring-fg { fill: none; stroke: #f85149; stroke-width: 3; stroke-linecap: round; transition: stroke-dasharray 0.3s; }
+.rbq-hud-portrait.rbq-present .rbq-hud-hpring-fg { stroke: #3fb950; }
+
+/* 字形：数字等宽、标签拉开字距，少一点"网页感" */
+.rbq-hud-medal-num, .rbq-cc-attr-value, .rbq-threat-hp-text, .rbq-hud-quest-sub, .rbq-cc-bar-top span:last-child { font-variant-numeric: tabular-nums; }
+.rbq-hud-place { letter-spacing: 0.6px; }
+.rbq-cc-section-title, .rbq-lane-title, .rbq-compass-item, .rbq-hud-vtitle, .rbq-hud-quest-cat { letter-spacing: 0.4px; }
+.rbq-hud-option { border-width: 1.5px; }
+.rbq-hud-option:hover { box-shadow: inset 0 0 0 1px var(--rbq-accent), 0 5px 20px rgba(0,0,0,0.4); }
+
+/* ---- 变量库 ---- */
+.rbq-libscroll { max-height: 470px; overflow-y: auto; margin-top: 8px; }
+.rbq-librow { border-top: 1px dashed var(--rbq-border); padding: 7px 0; }
+.rbq-librow:first-child { border-top: none; }
+.rbq-librow-off { opacity: 0.5; }
+.rbq-librow-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.rbq-macro-chip {
+  font-family: monospace; font-size: 11px; padding: 2px 8px; border-radius: 6px; cursor: pointer;
+  background: rgba(157, 139, 108, 0.14); border: 1px solid rgba(157, 139, 108, 0.4); color: var(--rbq-accent);
+}
+.rbq-macro-chip:hover { background: rgba(157, 139, 108, 0.26); }
+.rbq-librow-name { font-size: 12.5px; }
+.rbq-librow-more { margin-top: 5px; }
+.rbq-librow-more summary { cursor: pointer; font-size: 11.5px; color: var(--rbq-text-mut); }
+.rbq-librow-more textarea { margin-top: 6px; }
+
+/* ---- 正则工坊 ---- */
+.rbq-wslist { display: flex; flex-direction: column; gap: 5px; margin: 8px 0; }
+.rbq-wsrow { display: flex; gap: 9px; align-items: flex-start; padding: 7px 9px; border: 1px solid var(--rbq-border); border-radius: 9px; cursor: pointer; }
+.rbq-wsrow:hover { border-color: var(--rbq-border-strong); }
+.rbq-wsrow.rbq-picked { border-color: var(--rbq-accent); background: rgba(157, 139, 108, 0.1); }
+.rbq-wsmain { min-width: 0; flex: 1; }
+.rbq-wsname { font-size: 12.5px; font-weight: 600; }
+.rbq-wsregex { display: block; font-size: 10.5px; color: var(--rbq-text-mut); margin-top: 3px; word-break: break-all; }
+
+/* 视口内层：内容区（罗盘/标题在外层，不会被内容渲染器清掉） */
+.rbq-hud-vbody { flex: 1; min-height: 0; }
+.rbq-hud-viewport { display: flex; flex-direction: column; }
+
+/* ==========================================================================
+   换皮：金琥珀描边 + 玻璃质感 + 更大的英雄视口
+   ========================================================================== */
+.rbq-hud-top, .rbq-cc-panel, .rbq-hud-viewport, .rbq-compass-menu, #rbq-panel {
+  backdrop-filter: blur(7px) saturate(1.1);
+  -webkit-backdrop-filter: blur(7px) saturate(1.1);
+}
+.rbq-hud-top { background: linear-gradient(180deg, rgba(217,164,65,0.08), rgba(0,0,0,0.22)); border-color: rgba(217,164,65,0.26); }
+.rbq-hud-viewport { min-height: 470px; border-color: rgba(217,164,65,0.2); }
+.rbq-hud-medal { border-color: var(--rbq-accent); box-shadow: 0 0 18px rgba(217,164,65,0.28), inset 0 0 12px rgba(217,164,65,0.16); }
+.rbq-hud-medal-num { text-shadow: 0 0 10px rgba(217,164,65,0.5); }
+.rbq-hud-chip { background: rgba(217,164,65,0.08); border-color: rgba(217,164,65,0.22); }
+.rbq-hud-quest { background: linear-gradient(90deg, rgba(217,164,65,0.10), rgba(217,164,65,0.02)); }
+.rbq-compass { box-shadow: 0 8px 26px rgba(0,0,0,0.6), 0 0 22px rgba(217,164,65,0.28); }
+.rbq-hud-portrait img, .rbq-hud-portrait-fallback { box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
+.rbq-card { background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(0,0,0,0.16)); }
+.rbq-pre { white-space: pre-wrap; font-family: monospace; font-size: 11.5px; line-height: 1.7; max-height: 260px; overflow: auto; background: var(--rbq-bg-sunken); border: 1px solid var(--rbq-border); border-radius: 8px; padding: 9px 11px; margin-top: 6px; color: var(--rbq-text-dim); }
+.rbq-tabs { border-bottom: 1px solid rgba(217,164,65,0.16); }
+
+/* ===== 布局修复：撑满宽度（之前整个仪表盘被挤成 270px 窄柱，右边全空） ===== */
+.rbq-pane { width: 100%; box-sizing: border-box; min-width: 0; }
+.rbq-pane.rbq-active { display: flex; flex-direction: column; width: 100%; }
+.rbq-body { align-items: stretch; width: 100%; box-sizing: border-box; }
+.rbq-hud { width: 100%; box-sizing: border-box; }
+.rbq-hud > * { width: 100%; box-sizing: border-box; }
+.rbq-hud-viewport, .rbq-hud-vbody, .rbq-viewhost, .rbq-scroll, .rbq-scroll-sub { width: 100%; box-sizing: border-box; }
+.rbq-card, .rbq-tabs { width: 100%; box-sizing: border-box; }
+.rbq-hud-dock { justify-content: flex-start; }
+.rbq-kv { width: 100%; }
+/* 正则工坊字段 */
+.rbq-ws-field { margin: 9px 0; }
+.rbq-ws-label { font-size: 12px; color: var(--rbq-text-dim); margin-bottom: 5px; }
+.rbq-ws-preview { white-space: pre-wrap; font-family: monospace; font-size: 11.5px; line-height: 1.7; background: var(--rbq-bg-sunken); border: 1px solid var(--rbq-border); border-radius: 8px; padding: 9px 11px; color: var(--rbq-text-dim); }
+.rbq-ws-manage { border-top: 1px dashed var(--rbq-border); margin-top: 10px; padding-top: 8px; }
+
+/* ==========================================================================
+   外壳：左侧竖排导航（取代横排标签）
+   ========================================================================== */
+#rbq-panel .rbq-body { display: flex; flex-direction: row; align-items: stretch; min-height: 0; flex: 1; }
+#rbq-panel .rbq-tabs {
+  display: flex; flex-direction: column; align-items: stretch; gap: 2px;
+  width: 118px; flex: 0 0 118px; padding: 10px 8px; overflow-y: auto;
+  border-bottom: none; border-right: 1px solid var(--rbq-border);
+  background: var(--rbq-bg-surface1, rgba(255,255,255,0.03));
+}
+#rbq-panel .rbq-tab { width: 100%; text-align: left; padding: 8px 11px; border-radius: var(--rbq-radius-sm, 8px); }
+#rbq-panel .rbq-tab.rbq-active { background: var(--rbq-accent-dim, rgba(217,164,65,0.14)); box-shadow: inset 2px 0 0 var(--rbq-accent); }
+#rbq-panel .rbq-pane { flex: 1; min-width: 0; }
+@media (max-width: 720px) {
+  #rbq-panel .rbq-body { flex-direction: column; }
+  #rbq-panel .rbq-tabs { flex-direction: row; width: 100%; flex: 0 0 auto; overflow-x: auto; border-right: none; border-bottom: 1px solid var(--rbq-border); }
+  #rbq-panel .rbq-tab { width: auto; white-space: nowrap; }
+}
+
+/* ==========================================================================
+   视觉套件 v2 —— 按借鉴代码（智脑 components.css / tokens.css）重做
+   按钮 / 输入 / 徽章 / 卡片 / 侧栏 / 面板玻璃 / 分段入场
+   ========================================================================== */
+
+/* ── 面板本体：玻璃 + 渐变 + 光晕 ── */
+#rbq-panel {
+  background:
+    linear-gradient(180deg, rgba(var(--rbq-accent-rgb), 0.06), rgba(0, 0, 0, 0) 220px),
+    var(--rbq-glass-bg);
+  border: 1px solid var(--rbq-glass-border);
+  border-radius: var(--rbq-radius-lg);
+  box-shadow: var(--rbq-glass-highlight), var(--rbq-shadow-glass), 0 0 0 1px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+#rbq-panel .rbq-header {
+  background: linear-gradient(180deg, rgba(var(--rbq-accent-rgb), 0.10), rgba(0, 0, 0, 0.12));
+  border-bottom: 1px solid var(--rbq-glass-border);
+  padding: 10px 12px;
+  align-items: center;
+}
+#rbq-panel .rbq-title { font-weight: 600; letter-spacing: 0.3px; }
+#rbq-panel .rbq-sub { color: var(--rbq-text-mut); font-weight: 400; font-size: var(--rbq-fs-label); }
+
+/* ── 左侧竖排导航：分组感 + 激活光条 ── */
+#rbq-panel .rbq-tabs {
+  width: 132px; flex: 0 0 132px; padding: 10px 8px; gap: 3px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.06));
+  border-right: 1px solid var(--rbq-glass-border);
+}
+#rbq-panel .rbq-tab {
+  position: relative; padding: 8px 12px; border-radius: var(--rbq-radius-sm);
+  color: var(--rbq-text-dim); background: transparent; border: 1px solid transparent;
+  transition: background var(--rbq-dur) var(--rbq-ease), color var(--rbq-dur) var(--rbq-ease), border-color var(--rbq-dur) var(--rbq-ease);
+}
+#rbq-panel .rbq-tab:hover { background: var(--rbq-bg-surface1); color: var(--rbq-text); border-color: var(--rbq-border); }
+#rbq-panel .rbq-tab.rbq-active {
+  background: linear-gradient(90deg, rgba(var(--rbq-accent-rgb), 0.20), rgba(var(--rbq-accent-rgb), 0.04));
+  color: var(--rbq-text); border-color: rgba(var(--rbq-accent-rgb), 0.35);
+  box-shadow: inset 3px 0 0 var(--rbq-accent), 0 0 16px rgba(var(--rbq-accent-rgb), 0.14);
+}
+
+/* ── 卡片：分区感 + 悬浮 ── */
+#rbq-panel .rbq-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(0, 0, 0, 0.18));
+  border: 1px solid var(--rbq-border);
+  border-radius: var(--rbq-radius);
+  padding: 12px 14px;
+  margin: 0 0 12px;
+  transition: border-color var(--rbq-dur) var(--rbq-ease), background var(--rbq-dur) var(--rbq-ease);
+}
+#rbq-panel .rbq-card:hover { border-color: var(--rbq-border-strong); }
+#rbq-panel .rbq-card > h4 {
+  margin: 0 0 8px; font-size: var(--rbq-fs-title); font-weight: 600; color: var(--rbq-text);
+  display: flex; align-items: center; gap: 6px;
+}
+#rbq-panel .rbq-card > h4::before {
+  content: ""; width: 3px; height: 14px; border-radius: 2px;
+  background: var(--rbq-accent); box-shadow: 0 0 10px rgba(var(--rbq-accent-rgb), 0.5);
+}
+#rbq-panel .rbq-hint { color: var(--rbq-text-mut); font-size: var(--rbq-fs-label); line-height: 1.7; }
+
+/* ── 按钮族（照 zn-btn / zn-btn-primary / zn-btn-danger） ── */
+#rbq-panel .rbq-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--rbq-space-1);
+  padding: 6px 14px; font-family: inherit; font-size: var(--rbq-fs-body); font-weight: 500;
+  color: var(--rbq-text); background: var(--rbq-bg-surface2);
+  border: 1px solid var(--rbq-border-strong); border-radius: var(--rbq-radius-sm);
+  cursor: pointer; white-space: nowrap;
+  transition: background var(--rbq-dur) var(--rbq-ease), border-color var(--rbq-dur) var(--rbq-ease), transform var(--rbq-dur-fast) var(--rbq-ease), box-shadow var(--rbq-dur) var(--rbq-ease);
+}
+#rbq-panel .rbq-btn:hover { border-color: var(--rbq-accent); background: var(--rbq-bg-surface2); }
+#rbq-panel .rbq-btn:active { transform: scale(0.98); }
+#rbq-panel .rbq-btn.rbq-primary {
+  color: #fff; background: rgba(var(--rbq-accent-rgb), 0.9); border-color: var(--rbq-accent);
+}
+#rbq-panel .rbq-btn.rbq-primary:hover { background: var(--rbq-accent-hover, var(--rbq-accent)); box-shadow: var(--rbq-glow-accent); }
+#rbq-panel .rbq-btn.rbq-danger { color: var(--rbq-danger); background: rgba(224, 87, 76, 0.10); border-color: rgba(224, 87, 76, 0.35); }
+#rbq-panel .rbq-btn.rbq-danger:hover { background: rgba(224, 87, 76, 0.20); }
+#rbq-panel .rbq-btn.rbq-icon { padding: 4px 9px; }
+
+/* ── 输入控件：聚焦描边环（照 zn-input:focus） ── */
+#rbq-panel .rbq-input, #rbq-panel .rbq-textarea, #rbq-panel select {
+  font-family: inherit; font-size: var(--rbq-fs-body); color: var(--rbq-text);
+  background: var(--rbq-bg-surface1); border: 1px solid var(--rbq-border-strong);
+  border-radius: var(--rbq-radius-sm); padding: 6px 10px;
+  transition: border-color var(--rbq-dur) var(--rbq-ease), box-shadow var(--rbq-dur) var(--rbq-ease);
+}
+#rbq-panel .rbq-input:focus, #rbq-panel .rbq-textarea:focus, #rbq-panel select:focus {
+  outline: none; border-color: var(--rbq-accent);
+  box-shadow: 0 0 0 2px rgba(var(--rbq-accent-rgb), 0.18);
+}
+#rbq-panel .rbq-textarea { resize: vertical; min-height: 4em; line-height: 1.6; }
+
+/* ── 徽章（模板检验用得到：错误/警告/信息） ── */
+#rbq-panel .rbq-badge {
+  display: inline-flex; align-items: center; padding: 1px 8px; font-size: var(--rbq-fs-label);
+  font-weight: 500; border-radius: var(--rbq-radius-sm); background: var(--rbq-bg-surface2);
+  color: var(--rbq-text-dim); border: 1px solid var(--rbq-border); white-space: nowrap;
+}
+#rbq-panel .rbq-badge.rbq-danger { color: var(--rbq-danger); background: rgba(224, 87, 76, 0.12); border-color: rgba(224, 87, 76, 0.32); }
+#rbq-panel .rbq-badge.rbq-warn { color: var(--rbq-warn); background: rgba(210, 153, 34, 0.12); border-color: rgba(210, 153, 34, 0.32); }
+#rbq-panel .rbq-badge.rbq-info { color: var(--rbq-info); background: rgba(88, 166, 255, 0.12); border-color: rgba(88, 166, 255, 0.32); }
+#rbq-panel .rbq-badge.rbq-ok { color: var(--rbq-ok); background: rgba(79, 191, 127, 0.12); border-color: rgba(79, 191, 127, 0.32); }
+
+/* ── 选项小胶囊（chips）：更明显的选中态 ── */
+#rbq-panel .rbq-catchip {
+  padding: 4px 11px; border-radius: var(--rbq-radius-pill); cursor: pointer;
+  background: var(--rbq-bg-surface1); border: 1px solid var(--rbq-border);
+  color: var(--rbq-text-dim); font-size: var(--rbq-fs-body);
+  transition: all var(--rbq-dur) var(--rbq-ease);
+}
+#rbq-panel .rbq-catchip:hover { color: var(--rbq-text); border-color: var(--rbq-border-strong); }
+#rbq-panel .rbq-catchip.rbq-active {
+  background: rgba(var(--rbq-accent-rgb), 0.18); border-color: var(--rbq-accent);
+  color: var(--rbq-text); box-shadow: 0 0 12px rgba(var(--rbq-accent-rgb), 0.20);
+}
+
+/* ── 滚动条：细、暗、悬浮变亮 ── */
+#rbq-panel .rbq-scroll { padding: 12px 14px 16px; }
+#rbq-panel *::-webkit-scrollbar { width: 9px; height: 9px; }
+#rbq-panel *::-webkit-scrollbar-track { background: transparent; }
+#rbq-panel *::-webkit-scrollbar-thumb { background: var(--rbq-border-strong); border-radius: 6px; border: 2px solid transparent; background-clip: content-box; }
+#rbq-panel *::-webkit-scrollbar-thumb:hover { background: var(--rbq-accent); background-clip: content-box; }
+
+/* ── 卡片入场分段动画（照 zn-stagger） ── */
+#rbq-panel .rbq-scroll > * { animation: rbq-card-in 0.32s var(--rbq-ease) both; }
+#rbq-panel .rbq-scroll > *:nth-child(1) { animation-delay: 0ms; }
+#rbq-panel .rbq-scroll > *:nth-child(2) { animation-delay: 40ms; }
+#rbq-panel .rbq-scroll > *:nth-child(3) { animation-delay: 80ms; }
+#rbq-panel .rbq-scroll > *:nth-child(4) { animation-delay: 120ms; }
+#rbq-panel .rbq-scroll > *:nth-child(5) { animation-delay: 160ms; }
+#rbq-panel .rbq-scroll > *:nth-child(n+6) { animation-delay: 200ms; }
+@keyframes rbq-card-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ── 触屏上按钮加大点按区 ── */
+@media (pointer: coarse) {
+  #rbq-panel .rbq-btn { min-height: 40px; }
+  #rbq-panel .rbq-catchip { min-height: 34px; }
+}
+
+/* ==========================================================================
+   DND 风格（照 DND 沉浸式仪表盘的界面）：顶部横排标签 + 暖褐黑实底 + 古铜金描边
+   参考色：底 #12100d / 面板 #1a1512 / 卡 #1e1814 / 金 #9d8b6c / 文字 #dcd0c0
+   ========================================================================== */
+
+/* ── 面板：实底（绝不透出酒馆页面）+ 金色描边 + 深阴影 ── */
+#rbq-panel {
+  background: var(--rbq-bg);
+  border: 1px solid var(--rbq-border-gold, var(--rbq-border-strong));
+  border-radius: var(--rbq-radius-lg);
+  box-shadow: 0 5px 25px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(220, 208, 192, 0.06);
+}
+#rbq-panel .rbq-body, #rbq-panel .rbq-pane, #rbq-panel .rbq-scroll { background: var(--rbq-bg); }
+
+/* ── 顶部渐变条（照 DND 的 HUD 顶栏）── */
+#rbq-panel .rbq-header {
+  background: linear-gradient(to bottom, #241d18, #1a1512);
+  border-bottom: 1px solid var(--rbq-border-gold, var(--rbq-border-strong));
+  padding: 9px 12px;
+}
+#rbq-panel .rbq-title {
+  font-family: var(--rbq-font-serif);
+  font-size: 1.06em;
+  letter-spacing: 0.6px;
+  color: #e8dcc8;
+}
+#rbq-panel .rbq-sub { font-family: var(--rbq-font-sans); }
+
+/* ── 标签：横排（不再挤成窄竖栏），整幅铺满 ── */
+#rbq-panel .rbq-body { display: flex; flex-direction: column; align-items: stretch; }
+#rbq-panel .rbq-tabs {
+  display: flex; flex-direction: row; flex-wrap: nowrap; align-items: stretch;
+  width: 100%; flex: 0 0 auto; gap: 0; padding: 0 8px; overflow-x: auto; overflow-y: hidden;
+  background: linear-gradient(to bottom, #1e1814, #171310);
+  border-right: none; border-bottom: 1px solid var(--rbq-border-gold, var(--rbq-border-strong));
+  scrollbar-width: none;
+}
+#rbq-panel .rbq-tabs::-webkit-scrollbar { height: 0; }
+#rbq-panel .rbq-tab {
+  width: auto; flex: 0 0 auto; white-space: nowrap; padding: 9px 13px;
+  border: none; border-bottom: 2px solid transparent; border-radius: 0;
+  background: transparent; color: var(--rbq-text-mut);
+  font-size: var(--rbq-fs-body); letter-spacing: 0.4px;
+  transition: color var(--rbq-dur) var(--rbq-ease), border-color var(--rbq-dur) var(--rbq-ease), background var(--rbq-dur) var(--rbq-ease);
+}
+#rbq-panel .rbq-tab:hover { color: var(--rbq-text); background: rgba(157, 139, 108, 0.08); }
+#rbq-panel .rbq-tab.rbq-active {
+  color: #e8dcc8;
+  border-bottom-color: var(--rbq-accent);
+  background: linear-gradient(to bottom, rgba(157, 139, 108, 0.14), rgba(157, 139, 108, 0.02));
+  box-shadow: 0 6px 14px -8px var(--rbq-accent);
+}
+#rbq-panel .rbq-pane { flex: 1; min-width: 0; }
+
+/* ── 卡片：DND 的渐变卡 + 金边 + 悬浮发光 ── */
+#rbq-panel .rbq-card {
+  background: linear-gradient(135deg, #221b16, #1a1512);
+  border: 1px solid var(--rbq-border);
+  border-radius: var(--rbq-radius);
+  padding: 12px 14px;
+  margin: 0 0 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  transition: border-color var(--rbq-dur) var(--rbq-ease), box-shadow var(--rbq-dur) var(--rbq-ease), transform var(--rbq-dur) var(--rbq-ease);
+}
+#rbq-panel .rbq-card:hover {
+  border-color: var(--rbq-border-gold, var(--rbq-border-strong));
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5), var(--rbq-glow-gold);
+}
+#rbq-panel .rbq-card > h4 {
+  font-family: var(--rbq-font-serif); font-size: 1.02em; letter-spacing: 0.5px;
+  color: #e8dcc8; margin: 0 0 8px; padding-left: 9px; position: relative;
+}
+#rbq-panel .rbq-card > h4::before {
+  content: ""; position: absolute; left: 0; top: 3px; bottom: 3px; width: 3px;
+  background: linear-gradient(to bottom, var(--rbq-accent), rgba(157, 139, 108, 0.2));
+  box-shadow: 0 0 8px var(--rbq-accent-glow);
+}
+#rbq-panel .rbq-hint { color: var(--rbq-text-mut); font-size: var(--rbq-fs-label); line-height: 1.7; }
+
+/* ── 按钮：DND 式窄边金字 ── */
+#rbq-panel .rbq-btn {
+  padding: 6px 13px; border-radius: var(--rbq-radius-sm);
+  background: linear-gradient(to bottom, #2b2219, #201a15);
+  border: 1px solid var(--rbq-border-strong); color: var(--rbq-text);
+}
+#rbq-panel .rbq-btn:hover { border-color: var(--rbq-accent); box-shadow: var(--rbq-glow-gold); }
+#rbq-panel .rbq-btn.rbq-primary {
+  background: linear-gradient(to bottom, #6a5637, #4a3c26);
+  border-color: var(--rbq-accent); color: #f2e8d5;
+}
+#rbq-panel .rbq-btn.rbq-primary:hover { background: linear-gradient(to bottom, #7d6741, #56472c); }
+
+/* ── chips / 徽章：金调 ── */
+#rbq-panel .rbq-catchip { border-radius: var(--rbq-radius-sm); background: rgba(157, 139, 108, 0.07); }
+#rbq-panel .rbq-catchip.rbq-active {
+  background: rgba(157, 139, 108, 0.20); border-color: var(--rbq-accent);
+  box-shadow: 0 0 10px rgba(157, 139, 108, 0.28);
+}
+#rbq-panel .rbq-badge { border-radius: var(--rbq-radius-sm); }
+
+/* ── 手机端：标签横滑、输入满宽、按钮更好点 ── */
+@media (max-width: 720px) {
+  #rbq-panel { width: 100vw; left: 0; top: 10px;
+    bottom: auto; height: 86vh; max-height: 86vh; border-radius: 8px 8px 0 0; }
+  #rbq-panel .rbq-tabs { padding: 0 4px; }
+  #rbq-panel .rbq-tab { padding: 10px 10px; font-size: var(--rbq-fs-label); }
+  #rbq-panel .rbq-scroll { padding: 10px 10px 20px; }
+  #rbq-panel .rbq-row { flex-wrap: wrap; }
+  #rbq-panel .rbq-input, #rbq-panel .rbq-textarea { width: 100%; min-width: 0; }
+  #rbq-panel .rbq-btn { min-height: 38px; }
+}
+
+/* ==========================================================================
+   图标导航（方案 B，照 DND 顶部一条）+ 数据页两栏布局钉住
+   ========================================================================== */
+
+/* ── 导航：一条紧凑的图标栏，整幅铺满；文字只在激活/悬停/手机端出现 ── */
+#rbq-panel .rbq-tabs {
+  display: flex; flex-direction: row; flex-wrap: nowrap; align-items: stretch;
+  width: 100%; flex: 0 0 auto; gap: 2px; padding: 0 6px;
+  overflow-x: auto; overflow-y: hidden;
+  background: linear-gradient(to bottom, #1e1814, #171310);
+  border-right: none; border-bottom: 1px solid var(--rbq-border-gold, var(--rbq-border-strong));
+}
+#rbq-panel .rbq-tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  width: auto; flex: 0 0 auto; white-space: nowrap;
+  padding: 8px 11px; border: none; border-bottom: 2px solid transparent; border-radius: 0;
+  background: transparent; color: var(--rbq-text-mut); cursor: pointer;
+  transition: color var(--rbq-dur) var(--rbq-ease), border-color var(--rbq-dur) var(--rbq-ease), background var(--rbq-dur) var(--rbq-ease);
+}
+#rbq-panel .rbq-tab .rbq-tab-ico { font-size: 17px; line-height: 1; }
+#rbq-panel .rbq-tab .rbq-tab-txt { display: none; font-size: var(--rbq-fs-body); letter-spacing: 0.4px; }
+#rbq-panel .rbq-tab:hover .rbq-tab-txt,
+#rbq-panel .rbq-tab.rbq-active .rbq-tab-txt { display: inline; }
+#rbq-panel .rbq-tab:hover { color: var(--rbq-text); background: rgba(157, 139, 108, 0.08); }
+#rbq-panel .rbq-tab.rbq-active {
+  color: #e8dcc8; border-bottom-color: var(--rbq-accent);
+  background: linear-gradient(to bottom, rgba(157, 139, 108, 0.16), rgba(157, 139, 108, 0.02));
+  box-shadow: 0 6px 14px -8px var(--rbq-accent);
+}
+
+/* ── 数据页：左列表 + 右详情（工具条必须在详情区顶部，不能掉到下面） ── */
+#rbq-panel .rbq-pane[data-pane="tables"].rbq-active {
+  display: flex; flex-direction: row; align-items: stretch; min-height: 0; width: 100%;
+}
+#rbq-panel .rbq-pane[data-pane="tables"] .rbq-tablelist {
+  width: 208px; flex: 0 0 208px; min-width: 0; overflow-y: auto;
+  border-right: 1px solid var(--rbq-border);
+}
+#rbq-panel .rbq-pane[data-pane="tables"] .rbq-gridwrap {
+  flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; overflow: hidden;
+}
+#rbq-panel .rbq-pane[data-pane="tables"] .rbq-toolbar { flex: 0 0 auto; order: 0; }
+#rbq-panel .rbq-pane[data-pane="tables"] .rbq-grid { flex: 1 1 auto; overflow: auto; }
+
+/* ── 手机端：图标栏文字都显示（横滑），数据页改上下 ── */
+@media (max-width: 720px) {
+  #rbq-panel .rbq-tab .rbq-tab-txt { display: inline; font-size: var(--rbq-fs-label); }
+  #rbq-panel .rbq-pane[data-pane="tables"] { flex-direction: column; }
+  #rbq-panel .rbq-pane[data-pane="tables"] .rbq-tablelist {
+    width: 100%; flex: 0 0 auto; max-height: 30vh; border-right: none; border-bottom: 1px solid var(--rbq-border);
+  }
+}
+
+/* ── 图标导航：::before 出图标；默认只显示图标（font-size:0 收起文字），激活/悬停/手机端出文字 ── */
+#rbq-panel .rbq-tab {
+  display: inline-flex; align-items: center; gap: 0;
+  padding: 8px 12px; border: none; border-bottom: 2px solid transparent; border-radius: 0;
+  background: transparent; color: var(--rbq-text-mut); cursor: pointer;
+  font-size: 0;               /* 收起文字（文字是 button 自己的文本节点） */
+  width: auto; flex: 0 0 auto; white-space: nowrap;
+  transition: color var(--rbq-dur) var(--rbq-ease), border-color var(--rbq-dur) var(--rbq-ease), background var(--rbq-dur) var(--rbq-ease);
+}
+#rbq-panel .rbq-tab::before { content: attr(data-ico); font-size: 17px; line-height: 1; }
+#rbq-panel .rbq-tab.rbq-active, #rbq-panel .rbq-tab:hover {
+  font-size: var(--rbq-fs-body); gap: 6px;
+}
+#rbq-panel .rbq-tab:hover { color: var(--rbq-text); background: rgba(157, 139, 108, 0.08); }
+#rbq-panel .rbq-tab.rbq-active {
+  color: #e8dcc8; border-bottom-color: var(--rbq-accent);
+  background: linear-gradient(to bottom, rgba(157, 139, 108, 0.16), rgba(157, 139, 108, 0.02));
+  box-shadow: 0 6px 14px -8px var(--rbq-accent);
+}
+@media (max-width: 720px) {
+  #rbq-panel .rbq-tab { font-size: var(--rbq-fs-label); gap: 5px; }
+}
+
+/* ==========================================================================
+   视口 DND 化 v2 —— 看板 / 威胁牌 / 技能轮盘 / 阵营图 / 年代带
+   基调：暖褐黑底 + 古铜金边 + 衬线小标题 + 悬浮光晕
+   ========================================================================== */
+
+/* ── 通用：视口内的区块标题与小标签 ── */
+#rbq-panel .rbq-hud-vbody h3, #rbq-panel .rbq-hud-vbody h4, #rbq-panel .rbq-section {
+  font-family: var(--rbq-font-serif);
+  letter-spacing: 0.5px;
+  color: #e8dcc8;
+}
+#rbq-panel .rbq-hud-vbody .rbq-section {
+  display: flex; align-items: center; gap: 8px;
+  padding-left: 9px; position: relative; margin: 16px 0 10px;
+}
+#rbq-panel .rbq-hud-vbody .rbq-section::before {
+  content: ""; position: absolute; left: 0; top: 2px; bottom: 2px; width: 3px;
+  background: linear-gradient(to bottom, var(--rbq-accent), rgba(157, 139, 108, 0.15));
+  box-shadow: 0 0 8px var(--rbq-accent-glow);
+}
+
+/* ── 任务看板 ── */
+#rbq-panel .rbq-kanban { gap: 12px; }
+#rbq-panel .rbq-lane {
+  background: linear-gradient(180deg, rgba(157, 139, 108, 0.06), rgba(0, 0, 0, 0.28));
+  border: 1px solid var(--rbq-border);
+  border-radius: var(--rbq-radius);
+  padding: 10px 10px 12px;
+  box-shadow: inset 0 1px 0 rgba(220, 208, 192, 0.05);
+}
+#rbq-panel .rbq-lane > *:first-child {
+  font-family: var(--rbq-font-serif);
+  color: #e8dcc8; letter-spacing: 0.5px;
+}
+
+/* ── 威胁牌（敌人）── */
+#rbq-panel .rbq-threat, #rbq-panel .rbq-enemy, #rbq-panel .rbq-threatcard {
+  border: 1px solid rgba(157, 139, 108, 0.32);
+  border-radius: var(--rbq-radius);
+  background: linear-gradient(135deg, #241c17, #17120f);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  transition: box-shadow var(--rbq-dur) var(--rbq-ease), border-color var(--rbq-dur) var(--rbq-ease);
+}
+#rbq-panel .rbq-threat:hover, #rbq-panel .rbq-enemy:hover { border-color: var(--rbq-accent); box-shadow: 0 8px 25px rgba(0, 0, 0, 0.6), var(--rbq-glow-gold); }
+
+/* ── 进度环 / 轮盘：金色描边 ── */
+#rbq-panel svg circle, #rbq-panel svg path, #rbq-panel svg line {
+  transition: stroke var(--rbq-dur) var(--rbq-ease);
+}
+#rbq-panel .rbq-wheel, #rbq-panel .rbq-skillwheel { filter: drop-shadow(0 0 6px rgba(157, 139, 108, 0.25)); }
+
+/* ── 年代带（纪事）── */
+#rbq-panel .rbq-era, #rbq-panel .rbq-timeline {
+  border-left: 2px solid rgba(157, 139, 108, 0.45);
+  padding-left: 12px;
+}
+
+/* ── 网格/列表项统一金调悬浮 ── */
+#rbq-panel .rbq-gridcell, #rbq-panel .rbq-item, #rbq-panel .rbq-slot {
+  border-color: var(--rbq-border);
+}
+#rbq-panel .rbq-gridcell:hover, #rbq-panel .rbq-item:hover, #rbq-panel .rbq-slot:hover {
+  border-color: var(--rbq-border-gold, var(--rbq-accent));
+  box-shadow: var(--rbq-glow-gold);
+}
+
+/* ==========================================================================
+   视口 DND 化 v3 —— 按视图层真实类名精确收口
+   （.rbq-lane-head / .rbq-lane-title / .rbq-era-band / .rbq-era-name / .rbq-knob / .rbq-chip）
+   ========================================================================== */
+#rbq-panel .rbq-lane-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 0 8px; margin-bottom: 8px;
+  border-bottom: 1px solid rgba(157, 139, 108, 0.22);
+}
+#rbq-panel .rbq-lane-title {
+  font-family: var(--rbq-font-serif); font-size: 0.96em; letter-spacing: 0.6px; color: #e8dcc8;
+}
+#rbq-panel .rbq-lane-count {
+  font-size: var(--rbq-fs-label); color: var(--rbq-text-mut);
+  border: 1px solid rgba(157, 139, 108, 0.25); border-radius: 999px; padding: 0 7px;
+}
+#rbq-panel .rbq-era-band {
+  background: linear-gradient(90deg, rgba(157, 139, 108, 0.16), rgba(157, 139, 108, 0.02));
+  border: 1px solid rgba(157, 139, 108, 0.22); border-radius: var(--rbq-radius);
+  padding: 10px 12px;
+}
+#rbq-panel .rbq-era-name { font-family: var(--rbq-font-serif); color: #e8dcc8; letter-spacing: 0.5px; }
+#rbq-panel .rbq-era-idx { color: var(--rbq-accent); font-variant-numeric: tabular-nums; }
+#rbq-panel .rbq-era-seg, #rbq-panel .rbq-knob {
+  box-shadow: 0 0 10px rgba(157, 139, 108, 0.35);
+}
+#rbq-panel .rbq-chip {
+  border: 1px solid rgba(157, 139, 108, 0.26);
+  background: rgba(157, 139, 108, 0.08);
+  border-radius: var(--rbq-radius-sm);
+}
+#rbq-panel .rbq-kv { border-bottom: 1px dashed rgba(157, 139, 108, 0.14); padding: 3px 0; }
+#rbq-panel .rbq-empty {
+  border: 1px dashed rgba(157, 139, 108, 0.28); border-radius: var(--rbq-radius);
+  background: rgba(157, 139, 108, 0.04); padding: 18px; text-align: center;
+  color: var(--rbq-text-mut); font-size: var(--rbq-fs-body);
+}
+
+/* ==========================================================================
+   SVG 图形视口 —— 技能轮盘 / 阵营图 / 人物关系（DND 质感）
+   ========================================================================== */
+#rbq-panel .rbq-wheel-outer { opacity: 0.85; }
+#rbq-panel .rbq-wheel-rim { fill: none; stroke-width: 2; opacity: 0.9; }
+#rbq-panel .rbq-wheel-tick { stroke: rgba(157, 139, 108, 0.35); stroke-width: 1; }
+#rbq-panel .rbq-wheel-tick-major { stroke: rgba(194, 168, 120, 0.8); stroke-width: 1.6; }
+#rbq-panel .rbq-wheel-emblem {
+  font-family: var(--rbq-font-serif); font-size: 30px; fill: #e8dcc8;
+  filter: drop-shadow(0 0 8px rgba(157, 139, 108, 0.6));
+}
+#rbq-panel .rbq-wheel-core { fill: rgba(0, 0, 0, 0.35); stroke: rgba(157, 139, 108, 0.35); }
+#rbq-panel .rbq-wheel-dot {
+  fill: linear-gradient(#000, #000);
+  stroke: url(#rbq-gold-grad); stroke-width: 1.5;
+  transition: filter var(--rbq-dur) var(--rbq-ease), stroke-width var(--rbq-dur) var(--rbq-ease);
+}
+#rbq-panel .rbq-wheel-dot:hover { stroke-width: 2.5; filter: drop-shadow(0 0 8px rgba(194, 168, 120, 0.8)); }
+#rbq-panel .rbq-wheel-initial {
+  font-size: 12px; fill: #e8dcc8; pointer-events: none; font-weight: 600;
+}
+#rbq-panel .rbq-web-ring { fill: none; stroke-width: 2; opacity: 0.85; }
+#rbq-panel .rbq-web-me { stroke: url(#rbq-gold-grad); stroke-width: 2; }
+#rbq-panel .rbq-web-me-text {
+  font-family: var(--rbq-font-serif); font-size: 14px; fill: #e8dcc8; pointer-events: none;
+}
+#rbq-panel .rbq-rel-node, #rbq-panel .rbq-node { transition: filter var(--rbq-dur) var(--rbq-ease); }
+#rbq-panel .rbq-rel-node:hover, #rbq-panel .rbq-node:hover { filter: drop-shadow(0 0 8px rgba(194, 168, 120, 0.75)); }
+#rbq-panel .rbq-rel-edge { stroke: rgba(157, 139, 108, 0.5); }
+#rbq-panel .rbq-rel-edge.rbq-mutual { stroke: rgba(194, 168, 120, 0.85); stroke-width: 1.8; }
+
+/* 威胁牌上的"威胁度环"（纯 CSS，无需额外 SVG） */
+#rbq-panel .rbq-threat-ring {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: conic-gradient(var(--rbq-danger) calc(var(--rbq-threat, 0) * 1%), rgba(157, 139, 108, 0.18) 0);
+  display: flex; align-items: center; justify-content: center; flex: 0 0 auto;
+}
+#rbq-panel .rbq-threat-ring > span {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: #17120f; display: flex; align-items: center; justify-content: center;
+  font-size: 11px; color: #e8dcc8;
+}
+
+/* ==========================================================================
+   视图质感总推 v4 —— 关系图 / 地图 / 轮盘 / 阵营图 / 记忆 / 总览 / 威胁牌
+   原则：SVG 里所有圆/线/文字统一金调；可交互元素悬浮发光；卡片带金色导轨。
+   ========================================================================== */
+
+/* ── SVG 全局：文字衬线金白、线条金灰、节点金环 ── */
+#rbq-panel .rbq-hud-vbody svg text {
+  font-family: var(--rbq-font-sans);
+  fill: #ded2c0;
+}
+#rbq-panel .rbq-hud-vbody svg line,
+#rbq-panel .rbq-hud-vbody svg polyline,
+#rbq-panel .rbq-hud-vbody svg path[stroke] {
+  stroke: rgba(157, 139, 108, 0.45);
+}
+#rbq-panel .rbq-hud-vbody svg circle[stroke],
+#rbq-panel .rbq-hud-vbody svg rect[stroke] {
+  stroke: rgba(194, 168, 120, 0.75);
+}
+#rbq-panel .rbq-hud-vbody svg g {
+  transition: filter var(--rbq-dur) var(--rbq-ease), opacity var(--rbq-dur) var(--rbq-ease);
+}
+#rbq-panel .rbq-hud-vbody svg g:hover {
+  filter: drop-shadow(0 0 8px rgba(194, 168, 120, 0.75));
+}
+#rbq-panel .rbq-hud-vbody svg g:hover text { fill: #f2e8d5; }
+/* 画布本身：暗底 + 极轻的内阴影，让图形"浮"起来 */
+#rbq-panel .rbq-hud-vbody svg {
+  background: radial-gradient(120% 120% at 50% 0%, rgba(157, 139, 108, 0.06), rgba(0, 0, 0, 0.22) 70%);
+  border-radius: var(--rbq-radius);
+}
+
+/* ── 关系图：节点徽记感 + 图例 ── */
+#rbq-panel .rbq-hud-vbody svg g[style*="cursor"] circle {
+  fill: rgba(36, 28, 22, 0.9);
+  stroke-width: 1.6;
+}
+#rbq-panel .rbq-legend {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+  margin: 8px 0 4px; padding: 7px 10px;
+  border: 1px solid rgba(157, 139, 108, 0.22); border-radius: var(--rbq-radius);
+  background: rgba(157, 139, 108, 0.05); font-size: var(--rbq-fs-label); color: var(--rbq-text-dim);
+}
+#rbq-panel .rbq-legend i { color: var(--rbq-accent); font-style: normal; }
+
+/* ── 地图：地点点带光晕、连线更清晰、当前位置呼吸 ── */
+#rbq-panel .rbq-hud-vbody svg circle {
+  filter: drop-shadow(0 0 4px rgba(157, 139, 108, 0.35));
+}
+@keyframes rbq-map-breathe {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50% { opacity: 0.95; transform: scale(1.12); }
+}
+#rbq-panel .rbq-map-pulse
+ { animation: rbq-map-breathe 2.6s var(--rbq-ease) infinite; transform-origin: center; transform-box: fill-box; }
+
+/* ── 威胁牌：左侧金色导轨 + 悬浮抬升 ── */
+#rbq-panel .rbq-threat, #rbq-panel .rbq-enemy { position: relative; padding-left: 14px; }
+#rbq-panel .rbq-threat::before, #rbq-panel .rbq-enemy::before {
+  content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 2px;
+  background: linear-gradient(to bottom, var(--rbq-danger), rgba(157, 139, 108, 0.25));
+}
+#rbq-panel .rbq-threat:hover, #rbq-panel .rbq-enemy:hover { transform: translateY(-1px); }
+
+/* ── 记忆时间线：金色节点 ── */
+#rbq-panel .rbq-memline, #rbq-panel .rbq-tl { border-left: 2px solid rgba(157, 139, 108, 0.35); padding-left: 12px; }
+#rbq-panel .rbq-memline > *, #rbq-panel .rbq-tl > * { position: relative; }
+#rbq-panel .rbq-memline > *::before, #rbq-panel .rbq-tl > *::before {
+  content: ""; position: absolute; left: -17px; top: 6px; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--rbq-accent); box-shadow: 0 0 8px var(--rbq-accent-glow);
+}
+
+/* ── 总览 / HUD：状态条与徽章金调 ── */
+#rbq-panel .rbq-hud-top { backdrop-filter: blur(6px); }
+#rbq-panel .rbq-hud-chip { transition: border-color var(--rbq-dur) var(--rbq-ease), background var(--rbq-dur) var(--rbq-ease); }
+#rbq-panel .rbq-hud-chip:hover { border-color: var(--rbq-accent); background: rgba(157, 139, 108, 0.14); }
+#rbq-panel .rbq-hud-portrait:hover { transform: translateY(-2px); }
+#rbq-panel .rbq-hud-portrait { transition: transform var(--rbq-dur) var(--rbq-ease); }
+
+/* ── 通用：所有卡片的悬浮都带一点金色抬升 ── */
+#rbq-panel .rbq-cardgrid > *:hover { transform: translateY(-1px); }
+#rbq-panel .rbq-cardgrid > * { transition: transform var(--rbq-dur) var(--rbq-ease), border-color var(--rbq-dur) var(--rbq-ease); }
+
+/* ==========================================================================
+   关系 / 地图 / 轮盘 细节 v5
+   ========================================================================== */
+/* 关系语标签做成药丸，压在连线上更清楚 */
+#rbq-panel .rbq-edge-label {
+  font-size: 10px;
+  paint-order: stroke;
+  stroke: rgba(18, 16, 13, 0.9);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+/* 地图：迷雾 + 路径动效 */
+#rbq-panel .rbq-map-fog {
+  fill: rgba(8, 7, 6, 0.42);
+  stroke: none;
+  filter: blur(6px);
+}
+#rbq-panel .rbq-map-longroad {
+  fill: none;
+  stroke: rgba(194, 168, 120, 0.5);
+  stroke-width: 2;
+  stroke-dasharray: 10 8;
+  animation: rbq-road-flow 3.2s linear infinite;
+}
+#rbq-panel .rbq-map-road {
+  stroke: rgba(194, 168, 120, 0.65);
+  stroke-width: 1.6;
+  stroke-dasharray: 6 6;
+  animation: rbq-road-flow 2.4s linear infinite;
+}
+#rbq-panel .rbq-map-trail { fill: none; stroke: rgba(157, 139, 108, 0.35); stroke-width: 1.2; stroke-dasharray: 3 6; }
+@keyframes rbq-road-flow { to { stroke-dashoffset: -36; } }
+#rbq-panel .rbq-map-zone-label { font-family: var(--rbq-font-serif); fill: #e8dcc8; }
+#rbq-panel .rbq-map-icon { fill: #e8dcc8; }
+#rbq-panel .rbq-map-node { stroke: url(#rbq-gold-grad); stroke-width: 1.6; }
+/* 轮盘：流派弧线 */
+#rbq-panel .rbq-wheel-arc {
+  stroke: url(#rbq-gold-grad);
+  stroke-width: 1.4;
+  stroke-dasharray: 5 7;
+  opacity: 0.55;
+}
+#rbq-panel .rbq-wheel-ring-label {
+  font-family: var(--rbq-font-serif);
+  font-size: 11px;
+  fill: rgba(232, 220, 200, 0.75);
+}
+
+/* ==========================================================================
+   窄面板适配 v6 —— 面板变窄/手机端时不再"左边一小条、右边全空"
+   ========================================================================== */
+/* SVG 一律撑满可用宽度（它们都有 viewBox，能等比缩放） */
+#rbq-panel .rbq-hud-vbody svg {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: auto !important;
+  max-height: 62vh;
+  display: block;
+  margin: 0 auto;
+}
+/* 纸娃娃：人形与槽位等宽居中 */
+#rbq-panel .rbq-doll { width: 100%; justify-content: center; gap: 10px; }
+#rbq-panel .rbq-doll-bodywrap { min-width: 0; }
+#rbq-panel .rbq-doll-svg { max-width: 260px; }
+
+/* 窄面板（<620px）与手机端：所有多列布局收成单列，避免右侧空白 */
+#rbq-panel.rbq-narrow .rbq-cardgrid,
+#rbq-panel.rbq-narrow .rbq-invgrid,
+#rbq-panel.rbq-narrow .rbq-kanban,
+#rbq-panel.rbq-narrow .rbq-doll,
+#rbq-panel.rbq-narrow .rbq-inv-layout,
+#rbq-panel.rbq-narrow .rbq-body2,
+#rbq-panel.rbq-narrow .rbq-era-cards { 
+  display: block !important;
+}
+#rbq-panel.rbq-narrow .rbq-cardgrid > *,
+#rbq-panel.rbq-narrow .rbq-era-cards > * { margin-bottom: 8px; }
+#rbq-panel.rbq-narrow .rbq-doll-col { width: 100%; }
+#rbq-panel.rbq-narrow .rbq-doll-bodywrap { width: 100%; }
+#rbq-panel.rbq-narrow .rbq-doll-marker { position: static !important; margin-bottom: 6px; }
+#rbq-panel.rbq-narrow .rbq-doll-marker .rbq-doll-slot { width: 100%; }
+#rbq-panel.rbq-narrow .rbq-doll-svg { display: none; }        /* 窄屏下不显示人形轮廓，避免挤 */
+#rbq-panel.rbq-narrow .rbq-kanban { grid-template-columns: 1fr !important; }
+#rbq-panel.rbq-narrow .rbq-viewbar { flex-wrap: wrap; gap: 6px; }
+#rbq-panel.rbq-narrow .rbq-hud-dock { overflow-x: auto; }
+#rbq-panel.rbq-narrow .rbq-hud-top { flex-wrap: wrap; }
+
+@media (max-width: 720px) {
+  #rbq-panel .rbq-hud-vbody svg { max-height: 48vh; }
+  #rbq-panel .rbq-cardgrid { grid-template-columns: 1fr !important; }
+  #rbq-panel .rbq-kanban { grid-template-columns: 1fr !important; }
+}
+
+/* ==========================================================================
+   面板定位总保险：酒馆的 <html> 带 transform（恒等矩阵），使 position:fixed
+   相对"高度为 0 的 html 盒子"——所以任何 bottom 定位都会把元素推到屏幕外。
+   结论：面板与所有浮动元素**只用 top 定位**，bottom 一律 auto。
+   ========================================================================== */
+#rbq-panel {
+  bottom: auto;
+  top: var(--rbq-panel-top, auto);
+}
+@media (max-width: 720px) {
+  #rbq-panel {
+    left: 0;
+    right: auto;
+    top: 10px;
+    bottom: auto;
+    width: 100vw;
+    height: 84vh;
+    max-height: 84vh;
+  }
+}
+
+/* ==========================================================================
+   标签栏与拖动定稿 v7
+   ① 拖动：面板只受 JS 写的 inline left/top 控制（上面已清掉 !important）
+   ② 标签：默认图标态（font-size:0 + ::before 图标），只有当前项与悬浮才展开文字
+   ③ 滚轮：标签栏横向可滚（JS 里接 wheel → scrollLeft）
+   ========================================================================== */
+#rbq-panel .rbq-tabs {
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+#rbq-panel .rbq-tabs .rbq-tab {
+  font-size: 0;                       /* 图标态：不显示文字 */
+  width: auto;
+  white-space: nowrap;
+}
+#rbq-panel .rbq-tabs .rbq-tab::before {
+  content: attr(data-ico);
+  font-size: 17px;
+  line-height: 1;
+  display: inline-block;
+}
+#rbq-panel .rbq-tabs .rbq-tab.rbq-active,
+#rbq-panel .rbq-tabs .rbq-tab:hover {
+  font-size: var(--rbq-fs-label);     /* 当前项/悬浮：展开文字 */
+  gap: 5px;
+}
+@media (max-width: 720px) {
+  #rbq-panel .rbq-tabs {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+}
+/* 拖动中的反馈：把手与面板 */
+#rbq-panel .rbq-head { cursor: grab; }
+#rbq-panel .rbq-head.rbq-dragging, #rbq-panel .rbq-drag { cursor: grabbing; }
+#rbq-panel.rbq-dragging { user-select: none; }
+
+/* 窄屏标签更紧凑：11 个图标尽量一屏放下，放不下时靠滚轮横向滚 */
+@media (max-width: 760px) {
+  #rbq-panel .rbq-tabs { gap: 1px; padding: 6px 4px; }
+  #rbq-panel .rbq-tabs .rbq-tab { padding: 8px 7px; }
+  #rbq-panel .rbq-tabs .rbq-tab.rbq-active, #rbq-panel .rbq-tabs .rbq-tab:hover { padding: 8px 9px; }
+  #rbq-panel .rbq-tabs { -webkit-overflow-scrolling: touch; }
+}
+
+/* ==========================================================================
+   滚动条统一 v8 —— 亮灰系统滚动条跟 DND 暗金风格违和
+   ① 标签栏：彻底隐藏滚动条（仍可靠滚轮/触摸/拖拽滚动），两侧加渐隐提示可滚
+   ② 面板内其它滚动容器：细金条 + 透明轨道
+   ========================================================================== */
+#rbq-panel .rbq-tabs {
+  scrollbar-width: none;                 /* Firefox */
+  -ms-overflow-style: none;
+}
+#rbq-panel .rbq-tabs::-webkit-scrollbar { width: 0; height: 0; display: none; }
+@media (max-width: 760px) {
+  #rbq-panel .rbq-tabs {
+    /* 两侧渐隐：提示"这里还能滚"，替代滚动条 */
+    mask-image: linear-gradient(to right, transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%);
+  }
+}
+/* 面板内其它滚动条：细金条 */
+#rbq-panel, #rbq-panel * {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(157, 139, 108, 0.35) transparent;
+}
+#rbq-panel ::-webkit-scrollbar { width: 8px; height: 8px; }
+#rbq-panel ::-webkit-scrollbar-track { background: transparent; }
+#rbq-panel ::-webkit-scrollbar-thumb {
+  background: rgba(157, 139, 108, 0.28);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+#rbq-panel ::-webkit-scrollbar-thumb:hover { background: rgba(194, 168, 120, 0.5); background-clip: content-box; }
+#rbq-panel ::-webkit-scrollbar-corner { background: transparent; }
+
+/* ==========================================================================
+   DND 结构对齐 v9 —— 参考 DND 仪表盘：2×2 行动卡 / D20 金色轮次徽章 / chips 分隔
+   ========================================================================== */
+/* 行动选项：2×2 卡片（原来是竖排列表） */
+#rbq-panel .rbq-hud-actions,
+#rbq-panel .rbq-options-grid {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 8px !important;
+}
+#rbq-panel .rbq-hud-actions > *,
+#rbq-panel .rbq-option-card {
+  min-height: 56px;
+  border: 1px solid var(--rbq-border-gold, rgba(157, 139, 108, 0.36));
+  border-radius: var(--rbq-radius);
+  background: linear-gradient(160deg, rgba(157, 139, 108, 0.10), rgba(0, 0, 0, 0.35));
+  padding: 9px 11px;
+  font-family: var(--rbq-font-serif);
+  transition: transform var(--rbq-dur) var(--rbq-ease), box-shadow var(--rbq-dur) var(--rbq-ease);
+}
+#rbq-panel .rbq-hud-actions > *:hover,
+#rbq-panel .rbq-option-card:hover { transform: translateY(-1px); box-shadow: var(--rbq-glow-gold); }
+/* 每张卡左上角的 A./B./C./D. 序号 */
+#rbq-panel .rbq-hud-actions > *::before,
+#rbq-panel .rbq-option-card::before {
+  content: attr(data-key);
+  font-weight: 700;
+  color: var(--rbq-accent);
+  margin-right: 6px;
+  letter-spacing: 0.5px;
+}
+/* 轮次徽章：D20 金色圆牌 */
+#rbq-panel .rbq-hud-round,
+#rbq-panel .rbq-round-badge {
+  width: 46px; height: 46px; flex: 0 0 46px;
+  border-radius: 50%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  font-family: var(--rbq-font-serif);
+  color: #f0e3c8;
+  background: radial-gradient(circle at 34% 28%, rgba(194, 168, 120, 0.35), rgba(20, 16, 12, 0.95) 70%);
+  border: 1px solid var(--rbq-border-gold, rgba(157, 139, 108, 0.5));
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.6), var(--rbq-glow-gold);
+  line-height: 1.05;
+}
+#rbq-panel .rbq-hud-round b, #rbq-panel .rbq-round-badge b { font-size: 15px; }
+#rbq-panel .rbq-hud-round span, #rbq-panel .rbq-round-badge span { font-size: 9px; opacity: 0.75; letter-spacing: 1px; }
+/* HUD chips 之间加 │ 分隔（DND 的顶栏观感） */
+#rbq-panel .rbq-hud-chip + .rbq-hud-chip::before {
+  content: '│';
+  margin-right: 8px;
+  color: var(--rbq-border-gold, rgba(157, 139, 108, 0.45));
+  opacity: 0.7;
+}
+
+/* ==========================================================================
+   面板最大尺寸 v10 —— 大屏下不再无限制跟随窗口变大
+   ========================================================================== */
+#rbq-panel {
+  max-width: 1180px;
+  max-height: 860px;
+}
+@media (max-width: 1200px) {
+  #rbq-panel { max-width: calc(100vw - 24px); }
+}
+@media (max-height: 880px) {
+  #rbq-panel { max-height: calc(100vh - 24px); }
+}
+
+/* ==========================================================================
+   头部更新胶囊 v11 —— 取代整行横幅（不占行、不挤排版）
+   ========================================================================== */
+#rbq-panel .rbq-chip-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  height: 24px; padding: 0 10px; margin-left: 6px;
+  border: 1px solid var(--rbq-border-gold, rgba(157, 139, 108, 0.5));
+  border-radius: 999px;
+  background: linear-gradient(160deg, rgba(194, 168, 120, 0.22), rgba(0, 0, 0, 0.35));
+  color: #f0e3c8; font-size: 12px; line-height: 1;
+  cursor: pointer; white-space: nowrap;
+  transition: box-shadow var(--rbq-dur) var(--rbq-ease), transform var(--rbq-dur) var(--rbq-ease);
+}
+#rbq-panel .rbq-chip-badge:hover { box-shadow: var(--rbq-glow-gold); transform: translateY(-1px); }
+
+/* ---- 自适应与滚动：窄/宽窗口都可滚动，SVG 撑满宽度，标签永远可点 ---- */
+
+/* 安全版（不要动 HUD 的 flex 结构，否则视口会塌成一条） */
+.rbq-hud-vbody{overflow:auto}
+
+/* 地图/技能等两栏视图：两栏等高、列宽稳定（解决"两边不一样高/不一样大"） */
+/* 技能/势力等 SVG 里的文字：不允许叠在一起（缩小+不换行，交给 pan/zoom 看细节） */
+
+/* 定向排版修正：只动该动的地方，绝不全局缩放 SVG */
+/* 大图画才允许随宽度缩小（max-width，不是 width） */
+.rbq-map-svg,.rbq-wheel-svg,.rbq-web-svg,.rbq-relations-svg,.rbq-chronicle-svg{max-width:100%;height:auto}
+/* 数据页/表格区：确保能上下滚（flex 子项必须有 min-height:0） */
+.rbq-gridscroll{flex:1 1 auto;min-height:0;overflow:auto}
+.rbq-scroll,.rbq-scroll-sub{flex:1 1 auto;min-height:0;overflow-y:auto}
+/* 任务卡等文字容器：允许收缩并正常换行，避免被挤成竖排 */
+.rbq-wheel-detail,.rbq-board-card,.rbq-card,.rbq-quest-item{min-width:0;overflow-wrap:anywhere}
+/* 背包：窄屏也保持多列（不要竖排单列） */
+.rbq-inv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
+/* 标签栏窄屏可横滚 */
+.rbq-tabs,.rbq-viewnav{overflow-x:auto;overflow-y:hidden}
+
+/* __twoColEq : 图画+详情 两栏等高；窄屏上下且同宽 */
+div:has(> .rbq-wheel-detail),div:has(> .rbq-web-detail){display:flex;gap:12px;align-items:stretch;min-width:0}
+div:has(> .rbq-wheel-detail) > svg,div:has(> .rbq-web-detail) > svg{flex:1 1 auto;min-width:0;height:auto;max-height:100%}
+div:has(> .rbq-wheel-detail) > .rbq-wheel-detail,div:has(> .rbq-web-detail) > .rbq-web-detail{flex:0 0 280px;min-height:0;overflow:auto}
+#rbq-panel.rbq-narrow div:has(> .rbq-wheel-detail),#rbq-panel.rbq-narrow div:has(> .rbq-web-detail){flex-direction:column}
+#rbq-panel.rbq-narrow div:has(> .rbq-wheel-detail) > .rbq-wheel-detail,#rbq-panel.rbq-narrow div:has(> .rbq-web-detail) > .rbq-web-detail{flex:0 0 auto;width:100%}
+#rbq-panel.rbq-narrow div:has(> .rbq-wheel-detail) > svg,#rbq-panel.rbq-narrow div:has(> .rbq-web-detail) > svg{width:100%}
+
+/* __scrollFix : 数据页能上下滚（flex 链路每一层都要 min-height:0，否则子项撑不住、不出现滚动条） */
+#rbq-panel .rbq-pane[data-pane=tables]{display:flex;flex-direction:column;min-height:0}
+#rbq-panel .rbq-pane[data-pane=tables] .rbq-body,#rbq-panel .rbq-pane[data-pane=tables] .rbq-gridscroll,#rbq-panel .rbq-pane[data-pane=tables] .rbq-tablelist{min-height:0}
+#rbq-panel .rbq-pane[data-pane=tables] .rbq-gridscroll{flex:1 1 auto;overflow:auto}
+#rbq-panel .rbq-pane[data-pane=tables] .rbq-tablelist{overflow-y:auto}
+
+/* __eqFix2 : 显式让详情面板与图画等高（align-self 兜底，不依赖父级 align-items） */
+div:has(> .rbq-wheel-detail) > .rbq-wheel-detail{align-self:stretch;height:auto}
+div:has(> .rbq-web-detail) > .rbq-web-detail{align-self:stretch;height:auto}
+
+/* __wheelLayout */
+.rbq-wheel-layout{display:flex;gap:12px;align-items:stretch;min-width:0}
+.rbq-wheel-layout > .rbq-wheel-wrap{flex:1 1 auto;min-width:0;display:block}
+.rbq-wheel-layout > .rbq-wheel-wrap > svg{width:100%;height:auto;display:block}
+.rbq-wheel-layout > .rbq-wheel-detail,.rbq-wheel-layout > .rbq-web-detail{flex:0 0 290px;align-self:stretch;min-height:0;overflow:auto}
+.rbq-narrow .rbq-wheel-layout{flex-direction:column}
+.rbq-narrow .rbq-wheel-layout > .rbq-wheel-detail,.rbq-narrow .rbq-wheel-layout > .rbq-web-detail{flex:0 0 auto;width:100%;align-self:auto}
+
+/* __eqHard : 详情面板自带固定高/max-height，强制放开才能与图画等高 */
+.rbq-wheel-layout > .rbq-wheel-detail,.rbq-wheel-layout > .rbq-web-detail{height:auto;max-height:none;align-self:stretch;min-height:0;overflow:auto}
+
+/* __invFix : 真实类名是 .rbq-invgrid（不是 rbq-inv-grid），背包要多列 */
+.rbq-invgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px;align-content:start}
+.rbq-inv-layout{display:flex;gap:12px;align-items:flex-start;min-width:0}
+.rbq-inv-layout > .rbq-invgrid{flex:1 1 auto;min-width:0}
+
+/* __hudFit : HUD 内容不能超出面板（不改 display，只加 min-height/flex） */
+#rbq-panel .rbq-hud{min-height:0;overflow:hidden}
+
+/* __gridwrapFix : 数据页真正的外层是 .rbq-gridwrap，它撑住就没滚动条 */
+#rbq-panel .rbq-gridwrap{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
+#rbq-panel .rbq-gridscroll{flex:1 1 auto;min-height:0;overflow:auto}
+#rbq-panel .rbq-tablelist{min-height:0;overflow-y:auto}
+/* 背包详情与格子 */
+.rbq-invdetail{min-width:0;align-self:stretch;overflow-wrap:anywhere}
+.rbq-invslot{min-width:0}
+.rbq-map-detail{min-width:0;align-self:stretch;overflow-wrap:anywhere}
+
+/* __hudSafe : 只保证能收缩，绝不把视口压成 0 高（压塌会让悬浮球跑到顶部） */
+#rbq-panel .rbq-hud-viewport{min-height:0}
+#rbq-panel .rbq-hud-vbody{min-height:0;overflow:auto}
+
+/* __fillChain : 面板 → pane → hud → viewport → vbody 必须逐层填满；缺一层视口就只剩内容高，悬浮球会跑到顶部、菜单跑出面板 */
+#rbq-panel .rbq-body{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
+#rbq-panel .rbq-pane.rbq-active{display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
+#rbq-panel .rbq-hud{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;position:relative}
+#rbq-panel .rbq-hud-viewport{flex:1 1 auto;min-height:0;position:relative}
+#rbq-panel .rbq-hud-vbody{flex:1 1 auto;min-height:0;overflow:auto}
+#rbq-panel .rbq-viewhost{flex:1 1 auto;min-height:0;overflow:auto}
+
+/* __fixedBottom : 背包窄屏也保持多列；底部两条固定在最下、不随视图高度上下跳 */
+#rbq-panel .rbq-invgrid,#rbq-panel.rbq-narrow .rbq-invgrid{grid-template-columns:repeat(auto-fill,minmax(104px,1fr)) !important;gap:8px;align-content:start}
+#rbq-panel .rbq-inv-layout{display:flex;gap:12px;align-items:flex-start;min-width:0}
+/* HUD：上（状态条/视口）可伸缩，下（任务条/角色坞）固定 */
+#rbq-panel .rbq-hud{display:flex;flex-direction:column;min-height:0}
+#rbq-panel .rbq-hud-viewport{flex:1 1 auto;min-height:120px;position:relative}
+#rbq-panel .rbq-hud-quests,#rbq-panel .rbq-hud-dock{flex:0 0 auto}
+
+/* __colFix : pane/hud 必须是 column 才能谈“高度自适应”；row 方向下 flex 只管宽度（这是视口矮、底部栏乱跳的真因） */
+#rbq-panel .rbq-pane.rbq-active{display:flex !important;flex-direction:column !important;flex:1 1 auto !important;min-height:0 !important}
+#rbq-panel .rbq-hud{display:flex !important;flex-direction:column !important;flex:1 1 auto !important;min-height:0 !important}
+#rbq-panel .rbq-hud-viewport{flex:1 1 auto !important;min-height:160px !important}
+#rbq-panel .rbq-hud-vbody{flex:1 1 auto !important;min-height:0 !important;overflow:auto !important}
+#rbq-panel .rbq-hud-quests,#rbq-panel .rbq-hud-dock{flex:0 0 auto !important}
+
+/* __vhPanel : 面板高度跟随窗口（原来写死 640，白空一大截还逼用户滚动）；图画类视图撑满可用高度 */
+#rbq-panel{height:calc(100vh - 200px) !important;max-height:calc(100vh - 200px) !important}
+#rbq-panel .rbq-hud-viewport{min-height:0 !important}
+#rbq-panel .rbq-map-wrap,#rbq-panel .rbq-wheel-wrap{flex:1 1 auto;min-height:0}
+#rbq-panel .rbq-map-svg,#rbq-panel .rbq-wheel-svg{max-height:100%;height:auto}
+#rbq-panel .rbq-hud-vbody > *{min-height:0}
+
+/* __pinBottom : 把高度链锁死 → 视口高度恒定，底部三条（任务条/角色坞/悬浮球）永远钉在同一位置 */
+#rbq-panel .rbq-body{height:100% !important;min-height:0 !important;display:flex !important;flex-direction:column !important}
+#rbq-panel .rbq-pane.rbq-active{height:100% !important;display:flex !important;flex-direction:column !important;min-height:0 !important}
+#rbq-panel .rbq-hud{height:100% !important;display:flex !important;flex-direction:column !important;min-height:0 !important}
+#rbq-panel .rbq-hud-viewport{flex:1 1 auto !important;min-height:0 !important}
+#rbq-panel .rbq-hud-quests,#rbq-panel .rbq-hud-dock{flex:0 0 auto !important}
+
+/* __dockFix : 角色坞给头像预留高度（原来只有一行提示那么高），多角色横向滚动 */
+#rbq-panel .rbq-hud-dock{min-height:86px;align-items:center;overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap}
+#rbq-panel .rbq-hud-dock > *{flex:0 0 auto}
+
+/* __mapInvFix : 地图撑满、背包 grid 不再被详情挤成单列、角色坞文案不顶边 */
+#rbq-panel .rbq-map-layout{display:flex;gap:12px;align-items:stretch;min-width:0;flex:1 1 auto;min-height:0}
+#rbq-panel .rbq-map-wrap{flex:1 1 auto;min-width:0;min-height:0;display:flex;align-items:stretch}
+#rbq-panel .rbq-map-svg{width:100%;height:100%;max-height:100%}
+#rbq-panel .rbq-map-layout > .rbq-map-detail{flex:0 0 300px;align-self:stretch;min-height:0;overflow:auto}
+#rbq-panel .rbq-inv-layout > .rbq-invgrid{flex:1 1 auto;min-width:0}
+#rbq-panel .rbq-inv-layout > .rbq-invdetail{flex:0 0 300px;align-self:stretch;min-height:0;overflow:auto}
+#rbq-panel .rbq-hud-dock{padding:8px 12px 10px}
+#rbq-panel .rbq-hud-dock > .rbq-hint{padding-left:8px;opacity:.85}
+#rbq-panel.rbq-narrow .rbq-map-layout,#rbq-panel.rbq-narrow .rbq-inv-layout{flex-direction:column;align-items:stretch}
+#rbq-panel.rbq-narrow .rbq-map-layout > .rbq-map-detail,#rbq-panel.rbq-narrow .rbq-inv-layout > .rbq-invdetail{flex:0 0 auto;width:100%}
+
+/* __lastFix : 背包被固定成 125px 宽 → 强制 100%；地图撑满后比视口还高 → 限制在视口内 */
+#rbq-panel .rbq-inv-layout{min-height:0}
+#rbq-panel .rbq-inv-layout > .rbq-invgrid{flex:1 1 auto !important;min-width:0 !important;width:auto !important}
+#rbq-panel .rbq-invgrid{grid-template-columns:repeat(auto-fill,minmax(96px,1fr)) !important}
+#rbq-panel .rbq-invslot{width:auto !important;min-width:0 !important}
+#rbq-panel .rbq-map-wrap{flex:1 1 auto;min-height:0;overflow:hidden}
+#rbq-panel .rbq-map-svg{width:100%;height:100%;max-height:100%}
+#rbq-panel .rbq-hud-vbody > .rbq-map-layout,#rbq-panel .rbq-hud-vbody > .rbq-inv-layout{flex:1 1 auto;min-height:0}
+#rbq-panel .rbq-hud-vbody{display:flex;flex-direction:column;min-height:0}
+
+/* __displayFix : 窄屏那条 `display:block !important` 会让 grid-template-columns 完全失效（一行一个大图标）；
+   这里把 display 抢回 grid，手机端也能多列。 */
+#rbq-panel .rbq-invgrid,#rbq-panel.rbq-narrow .rbq-invgrid{display:grid !important;width:100% !important;
+  grid-template-columns:repeat(auto-fill,minmax(96px,1fr)) !important;gap:8px !important;align-content:start !important}
+#rbq-panel .rbq-invslot,#rbq-panel.rbq-narrow .rbq-invslot{width:auto !important;min-width:0 !important;max-width:100% !important}
+/* 地图同理：窄屏别把它压成 block 后再靠 width:100% */
+#rbq-panel .rbq-map-layout,#rbq-panel.rbq-narrow .rbq-map-layout{display:flex !important}
+#rbq-panel .rbq-map-wrap,#rbq-panel.rbq-narrow .rbq-map-wrap{flex:1 1 auto !important;min-width:0 !important;min-height:0 !important;overflow:hidden !important}
+#rbq-panel .rbq-map-svg,#rbq-panel.rbq-narrow .rbq-map-svg{width:100% !important;height:100% !important;max-height:100% !important}
+
+/* __invMobile : 手机端（视口窄）grid 占满整行、详情在下方；桌面端保持“左网格 + 右详情” */
+@media (max-width: 720px) {
+  #rbq-panel .rbq-inv-layout > .rbq-invgrid{width:100% !important;flex:0 0 auto !important}
+  #rbq-panel .rbq-inv-layout > .rbq-invdetail{width:100% !important;flex:0 0 auto !important}
+}
+
+/* __ringCap : 任务卡进度环被撑成 191px 巨环 → 限死 56px */
+#rbq-panel svg.rbq-ring{width:56px !important;height:56px !important;max-width:56px !important;max-height:56px !important;flex:0 0 auto !important}
+#rbq-panel .rbq-ring circle{stroke-width:3}
+/* 地图容器给最小高度，避免被压成一条 */
+#rbq-panel .rbq-map-wrap{min-height:300px}
+
+/* __noSquash : 图画 SVG 不能强制 height:100%（容器一矮就压成细条）→ 按宽度自适应 + 限高 */
+#rbq-panel .rbq-map-svg,#rbq-panel .rbq-wheel-svg,#rbq-panel .rbq-web-svg,#rbq-panel .rbq-graph-svg{width:100% !important;height:auto !important;max-height:100% !important}
+#rbq-panel .rbq-map-wrap,#rbq-panel .rbq-wheel-wrap,#rbq-panel .rbq-web-wrap{min-height:230px !important}
+/* 窄窗口：任务看板三列太挤 → 收成单列（780 以下） */
+@media (max-width: 780px) {
+  #rbq-panel .rbq-kanban{grid-template-columns:1fr !important;gap:10px !important}
+  #rbq-panel .rbq-kanban > *{min-height:84px}
+}
+/* 底部那行视图名上方留点空间，别太挤 */
+#rbq-panel .rbq-hud-vtitle{padding:8px 2px 4px !important;line-height:1.7 !important}
+#rbq-panel .rbq-hud-foot,#rbq-panel .rbq-viewfoot{padding:8px 2px 6px !important}
+
+/* __allFix : 一次性收尾（全部带 !important，防止被旧规则压掉） */
+/* ① 底部按悬浮球（50px）+ 余量留白，球不再压住数据 */
+#rbq-panel .rbq-hud-vbody{padding-bottom:66px !important}
+#rbq-panel .rbq-hud-vtitle{min-height:66px !important;display:flex !important;align-items:center !important;gap:8px !important;padding:6px 2px !important}
+/* ② 角色卡：限高 + 内部滚动 + 四周留白 */
+.rbq-cc-overlay,.rbq-cc-card{max-height:88vh !important;overflow:auto !important}
+.rbq-cc-overlay{padding:14px !important;box-sizing:border-box !important}
+.rbq-cc-card{margin:0 auto !important}
+/* ③ 技能未选中时的空详情条：不显示 */
+#rbq-panel .rbq-wheel-detail:empty{display:none !important}
+#rbq-panel .rbq-wheel-detail{min-height:0 !important}
+/* ④ 数据页：左列表固定宽、右表格占满；滚动条留出空间 */
+#rbq-panel .rbq-tablelist{flex:0 0 220px !important;min-width:180px !important;max-height:100% !important;overflow-y:auto !important}
+#rbq-panel .rbq-gridwrap{flex:1 1 auto !important;min-width:0 !important;min-height:0 !important;padding-bottom:6px !important}
+#rbq-panel .rbq-gridscroll{padding-bottom:10px !important}
+
+/* __fabInDock : 悬浮球放进角色坞行最右；底部只留小字高度；顶部标签行留间距 */
+#rbq-panel .rbq-hud-vbody{padding-bottom:8px !important}
+#rbq-panel .rbq-hud-vtitle{min-height:0 !important;display:flex !important;align-items:center !important;gap:8px !important;padding:6px 2px 8px !important;line-height:1.6 !important}
+#rbq-panel .rbq-hud-dock{position:relative !important;align-items:center !important;gap:10px !important;min-height:74px !important;padding:8px 10px !important}
+#rbq-panel .rbq-hud-dock .rbq-compass{position:static !important;margin-left:auto !important;flex:0 0 auto !important;bottom:auto !important;right:auto !important}
+#rbq-panel .rbq-hud-dock .rbq-compass-menu{position:absolute !important;right:8px !important;bottom:calc(100% + 6px) !important;left:auto !important;top:auto !important}
+/* 顶部标签行：给足间距，别挤在一起 */
+#rbq-panel .rbq-viewbar{gap:10px !important;padding:10px 4px 8px !important;flex-wrap:wrap !important}
+#rbq-panel .rbq-catbar{gap:8px !important;padding:4px 4px 10px !important;flex-wrap:wrap !important}
+#rbq-panel .rbq-invgrid{margin-top:6px !important}
+
+/* __menuHost : 罗盘菜单挂 HUD 层（不在角色坞里），固定面板右下向上弹 */
+#rbq-panel .rbq-hud{position:relative !important}
+#rbq-panel .rbq-hud > .rbq-compass-menu{position:absolute !important;right:12px !important;bottom:12px !important;top:auto !important;left:auto !important;z-index:40 !important}
+
+/* __fabMenu2 : 菜单移到球的上方（不能盖住球，否则点不到球来关闭）；底部小字上下居中 */
+#rbq-panel .rbq-hud > .rbq-compass-menu{right:12px !important;bottom:104px !important;top:auto !important}
+#rbq-panel .rbq-hud-vtitle{align-items:center !important;justify-content:flex-start !important;min-height:34px !important;padding:4px 2px !important;line-height:1.5 !important}
+
+/* __menuNarrow : 罗盘菜单窄一点（用户嫌太宽）；隐藏顶部那个齿轮设置钮 */
+#rbq-panel .rbq-compass-menu{max-width:236px !important;padding:8px !important;gap:4px !important;border-radius:12px !important}
+#rbq-panel .rbq-compass-item{font-size:11px !important;padding:5px 8px !important}
+#rbq-panel .rbq-hud-gear,#rbq-panel .rbq-gear,#rbq-panel [title="数据"][class*="gear"]{display:none !important}
+
+/* __menuNarrow2 : 菜单再窄一点 */
+#rbq-panel .rbq-compass-menu{max-width:196px !important;padding:7px !important;gap:3px !important}
+#rbq-panel .rbq-compass-item{font-size:10.5px !important;padding:4px 7px !important}
+
+/* __cardFit : 角色卡不要上下顶满（留出上下边距 + 限高 + 内部滚动） */
+.rbq-cc-overlay{padding:28px 16px !important;align-items:flex-start !important}
+.rbq-cc-card{max-height:78vh !important;overflow:auto !important;margin:0 auto !important}
+.rbq-cc-card > *:last-child{margin-bottom:10px !important}
+/* 角色坞：头像下的文字与球对齐、字号小一点 */
+#rbq-panel .rbq-hud-portrait{display:flex !important;flex-direction:column !important;align-items:center !important;gap:4px !important;justify-content:center !important}
+#rbq-panel .rbq-hud-portrait + *{align-self:center !important}
+
+/* __cardFix2 : 角色卡保持"刚打开"的样子（固定高度 + 内部滚动），不要撑到顶满 */
+.rbq-cc-overlay{align-items:center !important;justify-content:center !important;padding:24px 16px !important}
+.rbq-cc-card{max-height:72vh !important;height:auto !important;overflow:auto !important;overflow-x:hidden !important}
+.rbq-cc-card::-webkit-scrollbar{width:8px}
+.rbq-cc-card::-webkit-scrollbar-thumb{background:rgba(157,139,108,.35);border-radius:4px}
+
+/* __cardFix3 : 遮罩层必须是 flex，align-items/justify-content 才生效（之前卡片顶满就是因为不是 flex） */
+.rbq-cc-overlay{display:flex !important;flex-direction:column !important;align-items:center !important;justify-content:center !important;padding:24px 16px !important;box-sizing:border-box !important}
+.rbq-cc-card{max-height:72vh !important;margin:0 auto !important}
+
+/* __portraitAlign : 头像环/绿点/名字与头像对齐（用户反馈“绿条没对上”） */
+#rbq-panel .rbq-hud-portrait{position:relative !important;width:56px !important;display:flex !important;flex-direction:column !important;align-items:center !important}
+#rbq-panel .rbq-hud-portrait .rbq-hud-hpring{position:absolute !important;left:50% !important;top:0 !important;transform:translateX(-50%) !important;width:52px !important;height:52px !important;pointer-events:none !important}
+#rbq-panel .rbq-hud-live{position:absolute !important;top:2px !important;right:4px !important}
+#rbq-panel .rbq-hud-name{display:block !important;width:100% !important;text-align:center !important;font-size:10px !important;line-height:1.3 !important;margin-top:3px !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important}
+
+/* __avatarMenu : 头像上传菜单 */
+.rbq-avatar-menu{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:99999;background:var(--rbq-bg-elev,#1b1b1b);border:1px solid var(--rbq-border-strong,#555);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:6px;min-width:170px;box-shadow:0 18px 48px rgba(0,0,0,.6)}
+.rbq-avatar-menu-item{font:inherit;font-size:12px;text-align:left;padding:7px 10px;border-radius:8px;border:1px solid transparent;background:transparent;color:var(--rbq-text,#eee);cursor:pointer}
+.rbq-avatar-menu-item:hover{background:rgba(255,255,255,.07);border-color:var(--rbq-border,#444)}
+.rbq-cc-portrait{cursor:pointer}
+
+/* __toastAbort : 气泡里的中止按钮 */
+.rbq-toast-abort{margin-left:10px;font:inherit;font-size:11px;padding:2px 8px;border-radius:7px;border:1px solid rgba(255,255,255,.35);background:rgba(0,0,0,.25);color:inherit;cursor:pointer}
+.rbq-toast-abort:hover{background:rgba(255,255,255,.16)}
+
+/* __ringFix2 : 不要用 transform 居中（会被清成 none）→ 环与头像同尺寸、同起点，天然对齐 */
+#rbq-panel .rbq-hud-portrait{width:54px !important}
+#rbq-panel .rbq-hud-portrait img,#rbq-panel .rbq-hud-portrait .rbq-hud-portrait-fallback{width:54px !important;height:54px !important}
+#rbq-panel .rbq-hud-portrait .rbq-hud-hpring{position:absolute !important;left:0 !important;top:0 !important;transform:none !important;width:54px !important;height:54px !important}
+/* 地图容器在任何模式下都要有高度（narrow 选择器优先级更高，这里补同级别 !important） */
+#rbq-panel .rbq-map-wrap,#rbq-panel.rbq-narrow .rbq-map-wrap,#rbq-panel .rbq-wheel-wrap,#rbq-panel.rbq-narrow .rbq-wheel-wrap{min-height:240px !important}
+
+/* __avatarMenuPos : 头像菜单改为面板内绝对定位（就近弹出） */
+#rbq-panel{position:relative}
+#rbq-panel .rbq-avatar-menu{position:absolute;z-index:9999;background:var(--rbq-bg-elev,#1b1b1b);border:1px solid var(--rbq-border-strong,#555);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:6px;min-width:170px;box-shadow:0 18px 48px rgba(0,0,0,.6)}
+
+/* __memKv : 角色卡记忆排版（标签 + 内容两列） */
+.rbq-cc-mem-item{border:1px solid var(--rbq-border);border-radius:10px;padding:8px 10px;margin-bottom:8px;background:rgba(255,255,255,.02)}
+.rbq-cc-mem-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.rbq-cc-mem-kv{display:grid;grid-template-columns:52px 1fr;gap:4px 8px;margin:0}
+.rbq-cc-mem-kv dt{color:var(--rbq-text-dim);font-size:12px}
+.rbq-cc-mem-kv dd{margin:0;font-size:12.5px;line-height:1.5}
+
+/* __verStyle */
+.rbq-ver{margin-left:8px;font-size:10px;color:var(--rbq-accent);opacity:.85}
+
+/* __verHead */
+.rbq-ver-head{grid-column:1/-1;font-size:10px;color:var(--rbq-accent);opacity:.8;padding:2px 4px 6px;border-bottom:1px solid var(--rbq-border);margin-bottom:4px}
+
+/* __verBadge */
+.rbq-ver-badge{font-size:10px;color:var(--rbq-accent);border:1px solid var(--rbq-border-strong);border-radius:6px;padding:1px 5px;margin-left:6px;opacity:.9}
+
+/* __mapFill : 地图容器任何布局下都占满整宽（之前只有 300px，右边全空） */
+#rbq-panel .rbq-map-wrap{width:100% !important;max-width:100% !important}
+#rbq-panel .rbq-map-svg{width:100% !important}
+#rbq-panel .rbq-wheel-wrap{width:100% !important;max-width:100% !important}
+#rbq-panel .rbq-wheel-svg{width:100% !important}
+#rbq-panel .rbq-map-detail,#rbq-panel .rbq-map-layout{width:100% !important;max-width:100% !important}
+
+/* __mapStretch : 地图/轮盘容器必须被拉伸（L483 的 align-items:flex-start 会让 wrap 只有内容宽 300px） */
+#rbq-panel .rbq-map-layout,#rbq-panel .rbq-wheel-layout,#rbq-panel .rbq-inv-layout{align-items:stretch !important}
+#rbq-panel .rbq-map-layout > .rbq-map-wrap,#rbq-panel .rbq-wheel-layout > .rbq-wheel-wrap,#rbq-panel .rbq-inv-layout > .rbq-invgrid{align-self:stretch !important;width:100% !important;max-width:100% !important;flex:1 1 auto !important}
+@media (max-width: 720px) {
+  #rbq-panel .rbq-map-layout,#rbq-panel .rbq-wheel-layout,#rbq-panel .rbq-inv-layout{flex-direction:column !important}
+  #rbq-panel .rbq-map-layout > *,#rbq-panel .rbq-wheel-layout > *,#rbq-panel .rbq-inv-layout > *{width:100% !important;flex:0 0 auto !important}
+}
+
+/* __noFlexOverflow : 视口改回块级+滚动；地图容器固定高，不再被 flex:1 撑出容器（那会盖住上面的按钮和下面的说明） */
+#rbq-panel .rbq-hud-vbody{display:block !important;overflow:auto !important}
+#rbq-panel .rbq-map-layout{flex:none !important;height:auto !important;min-height:0 !important;margin:0 0 8px 0 !important}
+#rbq-panel .rbq-map-wrap{height:240px !important;min-height:240px !important;flex:none !important}
+#rbq-panel .rbq-wheel-wrap{height:240px !important;min-height:240px !important;flex:none !important}
+#rbq-panel .rbq-map-layout > .rbq-map-detail{flex:0 0 auto !important;width:100% !important;max-height:none !important}
+#rbq-panel .rbq-viewbar{margin:0 0 8px 0 !important}
+#rbq-panel .rbq-hint{margin:6px 0 0 0 !important;display:block !important}
+/* 状态栏 chip：左内边距压小（用户说“前面有空”） */
+#rbq-panel .rbq-hud-chip{padding:1px 7px 1px 5px !important}
+
+/* __chipIc */
+.rbq-chip-ic{width:12px;height:12px;flex:0 0 auto;margin-right:4px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;opacity:.9}
+.rbq-hud-chip{display:inline-flex;align-items:center;padding:1px 8px 1px 6px}
+.rbq-chip-tx{white-space:nowrap}
+
+/* __foldHead : 手动折叠的标题样式 */
+.rbq-cc-fold-head{cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px}
+.rbq-cc-fold-head::before{content:"▸";font-size:10px;opacity:.7}
+.rbq-cc-fold-body{margin-top:8px}
+.rbq-cc-fold:has(.rbq-cc-fold-body[style*="display: none"]) .rbq-cc-fold-head::before{content:"▸"}
+
+/* __foldHead2 : 手动折叠箭头（data-open 控制） */
+.rbq-cc-fold-head{cursor:pointer;user-select:none}
+.rbq-cc-fold-head::before{content:"▸";margin-right:6px;font-size:10px;opacity:.75;display:inline-block}
+.rbq-cc-fold-head[data-open="1"]::before{content:"▾"}
+
+/* __chipTight : 状态栏 chip 收紧（图标前的空与左右边距） */
+.rbq-hud-chips{gap:5px !important}
+.rbq-hud-chip{padding:1px 7px 1px 4px !important}
+.rbq-chip-ic{margin-right:3px !important}
+
+/* __chipTight2 : chip 图标贴边（用户放大仍觉得前面有空） */
+.rbq-hud-chip{padding:1px 7px 1px 3px !important}
+.rbq-chip-ic{width:13px !important;height:13px !important;margin-right:2px !important;margin-left:0 !important}
+
+/* __chipTight3 : chip 图标彻底贴边 */
+.rbq-hud-chip{padding:1px 7px 1px 1px !important}
+.rbq-chip-ic{margin-left:0 !important}
+
+/* __buildMark */
+.rbq-build-mark{border-color:var(--rbq-accent) !important;color:var(--rbq-accent) !important;font-weight:600}
+
+/* __chipTight4 : 用【带 ID 的选择器】压过之前同名的 ID 规则（纯类名赢不了 ✗） */
+#rbq-panel .rbq-hud-chip{padding:1px 8px 1px 3px !important}
+#rbq-panel .rbq-hud-chips{gap:5px !important}
+#rbq-panel .rbq-chip-ic{width:13px !important;height:13px !important;margin:0 2px 0 0 !important}
+#rbq-panel .rbq-build-mark{border-color:var(--rbq-accent) !important;color:var(--rbq-accent) !important}
+
+/* __colList : 结构页只读列清单 */
+#rbq-panel .rbq-col-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px;margin:6px 0}
+#rbq-panel .rbq-col-item{display:flex;align-items:center;gap:8px;padding:4px 8px;border:1px solid var(--rbq-border);border-radius:8px;background:rgba(255,255,255,0.03)}
+#rbq-panel .rbq-col-idx{font-size:10px;opacity:.55;min-width:16px;text-align:right}
+#rbq-panel .rbq-col-name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* __fixedPanel : 面板必须是 fixed —— absolute 会相对聊天容器定位，那个容器在页面下方 → 面板跑到屏幕外（用户报的“大窗口打不开”） */
+#rbq-panel{position:fixed !important;z-index:2147482000 !important}
+
+/* __chipEven : chip 左右内边距一致（用户要求"前后一样的空"） */
+#rbq-panel .rbq-hud-chip{padding:2px 7px 2px 7px !important}
+#rbq-panel .rbq-chip-ic{margin:0 4px 0 0 !important}
+
+/* __chipNoBorder : 胶囊去掉边框 —— 圆角大时左边框只剩一小段竖线，看起来就像一根"丨"（用户反复指出） */
+#rbq-panel .rbq-hud-chip{border:0 !important;background:rgba(217,164,65,0.10) !important;box-shadow:inset 0 0 0 1px rgba(217,164,65,0.16) !important}
+#rbq-panel .rbq-hud-chip.rbq-hud-chip-law{background:rgba(240,180,41,0.14) !important;box-shadow:inset 0 0 0 1px rgba(240,180,41,0.28) !important}
+#rbq-panel .rbq-build-mark{background:rgba(217,164,65,0.16) !important;box-shadow:inset 0 0 0 1px rgba(217,164,65,0.3) !important}
+
+/* __portraitPanel : 面板限成竖长方形（用户：横长方形不好看、右边全空） */
+#rbq-panel{max-width:620px !important}
+@media (min-width: 1100px) { #rbq-panel{width:620px !important} }
+
+/* __chipPure : 胶囊只用底色，连 1px 内阴影环也去掉（那个环在圆角处仍像一根竖线） */
+#rbq-panel .rbq-hud-chip{border:0 !important;box-shadow:none !important;background:rgba(217,164,65,0.12) !important}
+#rbq-panel .rbq-hud-chip.rbq-hud-chip-law{background:rgba(240,180,41,0.16) !important}
+#rbq-panel .rbq-build-mark{background:rgba(217,164,65,0.18) !important}
+
+/* __layoutFinal : 胶囊全圆角（边框成弧线，"丨"不再可能出现）+ 宽面板左右分栏 + 地图宽度自适应 */
+#rbq-panel .rbq-hud-chip{border-radius:999px !important;border:1px solid rgba(217,164,65,0.30) !important;box-shadow:none !important;background:rgba(217,164,65,0.09) !important}
+#rbq-panel .rbq-hud-chip.rbq-hud-chip-law{border-color:rgba(240,180,41,0.45) !important;background:rgba(240,180,41,0.12) !important}
+#rbq-panel .rbq-build-mark{border-color:rgba(217,164,65,0.45) !important;background:rgba(217,164,65,0.12) !important}
+#rbq-panel .rbq-map-svg,#rbq-panel .rbq-wheel-svg{width:100% !important;max-width:100% !important}
+/* 宽面板（本机面板上限 620）：左右分栏，详情只包裹内容 */
+@media (min-width: 561px) {
+  #rbq-panel .rbq-inv-layout,#rbq-panel .rbq-wheel-layout,#rbq-panel .rbq-map-layout{flex-direction:row !important;align-items:flex-start !important}
+  #rbq-panel .rbq-inv-layout > .rbq-invdetail,#rbq-panel .rbq-wheel-layout > .rbq-wheel-detail,#rbq-panel .rbq-map-layout > .rbq-map-detail{flex:0 0 auto !important;width:auto !important;max-width:46% !important;align-self:flex-start !important;max-height:none !important}
+  #rbq-panel .rbq-inv-layout > .rbq-invgrid,#rbq-panel .rbq-wheel-layout > .rbq-wheel-wrap,#rbq-panel .rbq-map-layout > .rbq-map-wrap{flex:1 1 auto !important;align-self:stretch !important;min-width:0 !important}
+}
+/* 窄面板/手机：上下排 */
+@media (max-width: 560px) {
+  #rbq-panel .rbq-inv-layout,#rbq-panel .rbq-wheel-layout,#rbq-panel .rbq-map-layout{flex-direction:column !important}
+  #rbq-panel .rbq-inv-layout > *,#rbq-panel .rbq-wheel-layout > *,#rbq-panel .rbq-map-layout > *{width:100% !important;max-width:100% !important;flex:0 0 auto !important}
+}
+
+/* __noChipSep : 删掉胶囊之间的分隔符 —— 它就是用户反复指出的那个"丨+空"（L1748 content:'│' + margin-right:8px） */
+#rbq-panel .rbq-hud-chip + .rbq-hud-chip::before{content:none !important;margin:0 !important;display:none !important}
+/* 详情卡片：宽度固定（随面板），高度随文案自适应换行 */
+@media (min-width: 561px) {
+  #rbq-panel .rbq-inv-layout > .rbq-invdetail,
+  #rbq-panel .rbq-wheel-layout > .rbq-wheel-detail,
+  #rbq-panel .rbq-map-layout > .rbq-map-detail{
+    flex:0 0 300px !important;width:300px !important;min-width:260px !important;max-width:300px !important;
+    height:auto !important;max-height:none !important;align-self:flex-start !important;overflow:visible !important;
+  }
+  #rbq-panel .rbq-invdetail .rbq-kv, #rbq-panel .rbq-invdetail .rbq-kv-v,
+  #rbq-panel .rbq-wheel-detail .rbq-kv, #rbq-panel .rbq-wheel-detail .rbq-kv-v,
+  #rbq-panel .rbq-map-detail .rbq-kv, #rbq-panel .rbq-map-detail .rbq-kv-v{white-space:normal !important;word-break:break-word !important}
+  #rbq-panel .rbq-invdetail .rbq-kv > :first-child, #rbq-panel .rbq-wheel-detail .rbq-kv > :first-child, #rbq-panel .rbq-map-detail .rbq-kv > :first-child{flex:0 0 62px !important}
+}
+
+/* __rowWin : 面板宽度足够时（>=521px 视口）即使带了 rbq-narrow 也走左右分栏（用户：这个宽度还不算很窄） */
+@media (min-width: 521px) {
+  #rbq-panel .rbq-inv-layout,#rbq-panel.rbq-narrow .rbq-inv-layout,
+  #rbq-panel .rbq-wheel-layout,#rbq-panel.rbq-narrow .rbq-wheel-layout,
+  #rbq-panel .rbq-map-layout,#rbq-panel.rbq-narrow .rbq-map-layout{flex-direction:row !important;align-items:flex-start !important}
+  #rbq-panel .rbq-inv-layout > .rbq-invdetail,#rbq-panel.rbq-narrow .rbq-inv-layout > .rbq-invdetail,
+  #rbq-panel .rbq-wheel-layout > .rbq-wheel-detail,#rbq-panel.rbq-narrow .rbq-wheel-layout > .rbq-wheel-detail,
+  #rbq-panel .rbq-map-layout > .rbq-map-detail,#rbq-panel.rbq-narrow .rbq-map-layout > .rbq-map-detail{
+    flex:0 0 300px !important;width:300px !important;min-width:250px !important;max-width:300px !important;height:auto !important;overflow:visible !important;align-self:flex-start !important}
+  #rbq-panel .rbq-inv-layout > .rbq-invgrid,#rbq-panel.rbq-narrow .rbq-inv-layout > .rbq-invgrid{flex:1 1 auto !important;min-width:0 !important}
+}
+
+/* __rowFix2 : 横排时左侧图形必须 width:auto（更早的 width:100%!important 会把整行占满 → 详情被挤到下一行） */
+@media (min-width: 521px) {
+  #rbq-panel .rbq-inv-layout > .rbq-invgrid,#rbq-panel.rbq-narrow .rbq-inv-layout > .rbq-invgrid,
+  #rbq-panel .rbq-wheel-layout > .rbq-wheel-wrap,#rbq-panel.rbq-narrow .rbq-wheel-layout > .rbq-wheel-wrap,
+  #rbq-panel .rbq-map-layout > .rbq-map-wrap,#rbq-panel.rbq-narrow .rbq-map-layout > .rbq-map-wrap{
+    width:auto !important;max-width:none !important;flex:1 1 auto !important;min-width:0 !important;align-self:stretch !important}
+  /* 详情宽度随窗口缩放（不窄于 220、不宽于 320） */
+  #rbq-panel .rbq-inv-layout > .rbq-invdetail,#rbq-panel.rbq-narrow .rbq-inv-layout > .rbq-invdetail,
+  #rbq-panel .rbq-wheel-layout > .rbq-wheel-detail,#rbq-panel.rbq-narrow .rbq-wheel-layout > .rbq-wheel-detail,
+  #rbq-panel .rbq-map-layout > .rbq-map-detail,#rbq-panel.rbq-narrow .rbq-map-layout > .rbq-map-detail{
+    flex:0 0 clamp(210px, 38%, 320px) !important;width:clamp(210px, 38%, 320px) !important;min-width:210px !important;max-width:320px !important;
+    height:auto !important;max-height:none !important;overflow:visible !important;align-self:flex-start !important}
+  #rbq-panel .rbq-inv-layout > .rbq-invdetail .rbq-invdetail-inner,#rbq-panel .rbq-wheel-layout > .rbq-wheel-detail > *{max-width:100% !important}
+}
+
+/* __kvGrid : 详情里的键值行用 grid 定列宽 —— 标签不许换行，只有值换行（用户：前面这些不应该换行，只有信息数据换行） */
+#rbq-panel .rbq-invdetail .rbq-kv,#rbq-panel .rbq-wheel-detail .rbq-kv,#rbq-panel .rbq-map-detail .rbq-kv,#rbq-panel .rbq-cc-mem-kv{
+  display:grid !important;grid-template-columns:auto minmax(0,1fr) !important;column-gap:10px !important;align-items:start !important}
+#rbq-panel .rbq-invdetail .rbq-kv > *:first-child,#rbq-panel .rbq-wheel-detail .rbq-kv > *:first-child,#rbq-panel .rbq-map-detail .rbq-kv > *:first-child{
+  white-space:nowrap !important;word-break:keep-all !important;min-width:0 !important}
+#rbq-panel .rbq-invdetail .rbq-kv > *:last-child,#rbq-panel .rbq-wheel-detail .rbq-kv > *:last-child,#rbq-panel .rbq-map-detail .rbq-kv > *:last-child{
+  white-space:normal !important;word-break:break-word !important;min-width:0 !important}
+/* 兜底：flex 布局的键值行也一样处理 */
+#rbq-panel .rbq-invdetail .rbq-kv > .rbq-kv-k,#rbq-panel .rbq-wheel-detail .rbq-kv > .rbq-kv-k{flex:0 0 auto !important;white-space:nowrap !important}
+#rbq-panel .rbq-invdetail .rbq-kv > .rbq-kv-v,#rbq-panel .rbq-wheel-detail .rbq-kv > .rbq-kv-v{flex:1 1 auto !important;white-space:normal !important;word-break:break-word !important;min-width:0 !important}
+
+/* __kvWrap : 详情里的"值"（含胶囊/徽标）允许换行且绝不超出卡片（用户：详情数据可以换行，不能超过卡片） */
+#rbq-panel .rbq-invdetail .rbq-kv > *:last-child,
+#rbq-panel .rbq-wheel-detail .rbq-kv > *:last-child,
+#rbq-panel .rbq-map-detail .rbq-kv > *:last-child{
+  white-space:normal !important;word-break:break-word !important;overflow-wrap:anywhere !important;
+  max-width:100% !important;min-width:0 !important;display:block !important}
+#rbq-panel .rbq-invdetail .rbq-kv > *:last-child > *,
+#rbq-panel .rbq-wheel-detail .rbq-kv > *:last-child > *,
+#rbq-panel .rbq-map-detail .rbq-kv > *:last-child > *{
+  white-space:normal !important;word-break:break-word !important;overflow-wrap:anywhere !important;max-width:100% !important}
+/* 胶囊类元素本身也要能换行、能撑满但不溢出 */
+#rbq-panel .rbq-invdetail .rbq-badge,#rbq-panel .rbq-wheel-detail .rbq-badge,#rbq-panel .rbq-map-detail .rbq-badge,
+#rbq-panel .rbq-invdetail .rbq-tag,#rbq-panel .rbq-wheel-detail .rbq-tag,#rbq-panel .rbq-map-detail .rbq-tag{
+  white-space:normal !important;word-break:break-word !important;overflow-wrap:anywhere !important;
+  max-width:100% !important;display:inline-block !important;height:auto !important}
+/* 详情卡片自身不许横向溢出 */
+#rbq-panel .rbq-invdetail,#rbq-panel .rbq-wheel-detail,#rbq-panel .rbq-map-detail{overflow-x:hidden !important}
+
+/* __wheelMapStack : 技能轮盘 / 地图 —— 无论窗口多大都上下排（用户：左右排版不好看），且两段都占满宽度 */
+#rbq-panel .rbq-wheel-layout,#rbq-panel.rbq-narrow .rbq-wheel-layout,
+#rbq-panel .rbq-map-layout,#rbq-panel.rbq-narrow .rbq-map-layout{flex-direction:column !important;align-items:stretch !important}
+#rbq-panel .rbq-wheel-layout > .rbq-wheel-wrap,#rbq-panel.rbq-narrow .rbq-wheel-layout > .rbq-wheel-wrap,
+#rbq-panel .rbq-map-layout > .rbq-map-wrap,#rbq-panel.rbq-narrow .rbq-map-layout > .rbq-map-wrap{
+  width:100% !important;max-width:100% !important;flex:0 0 auto !important;align-self:stretch !important}
+#rbq-panel .rbq-wheel-layout > .rbq-wheel-detail,#rbq-panel.rbq-narrow .rbq-wheel-layout > .rbq-wheel-detail,
+#rbq-panel .rbq-map-layout > .rbq-map-detail,#rbq-panel.rbq-narrow .rbq-map-layout > .rbq-map-detail{
+  width:100% !important;max-width:100% !important;flex:0 0 auto !important;align-self:stretch !important;height:auto !important;max-height:none !important}
+
+/* __noQuestStrip : 删掉角色坞上面的任务条（用户：任务多了会越来越多，底部要固定高度） */
+#rbq-panel .rbq-hud-quest,#rbq-panel .rbq-quest-strip,#rbq-panel .rbq-hud-quests,#rbq-panel .rbq-questbar,#rbq-panel .rbq-hud-tasks{display:none !important}
+/* 底部三条（角色坞 / 悬浮球）固定高度，不被内容顶开 */
+#rbq-panel .rbq-hud-dock{flex:0 0 auto !important;height:96px !important;min-height:96px !important;max-height:96px !important}
+
+/* __relFill : 人际关系图铺满视口（之前只覆盖了地图/轮盘，漏了 relations 的类名） */
+#rbq-panel .rbq-relations-wrap{width:100% !important;max-width:100% !important;flex:1 1 auto !important;min-height:420px !important;height:100% !important;display:flex !important}
+#rbq-panel .rbq-relations-svg{width:100% !important;height:100% !important;min-height:420px !important;max-width:100% !important}
+#rbq-panel .rbq-graph-layout{width:100% !important;max-width:100% !important;align-items:stretch !important;display:flex !important;gap:12px !important;min-height:0 !important;flex:1 1 auto !important}
+#rbq-panel .rbq-graph-side{flex:0 0 clamp(200px,32%,300px) !important;height:auto !important;align-self:flex-start !important}
+
+/* __dollGrid : 装备页（纸娃娃）排版 —— 三列网格：左槽位 / 纸娃娃 / 右槽位，不重叠不溢出 */
+#rbq-panel .rbq-doll{display:grid !important;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) !important;gap:10px !important;align-items:start !important;width:100% !important}
+#rbq-panel .rbq-doll-col{display:flex !important;flex-direction:column !important;gap:8px !important;min-width:0 !important}
+#rbq-panel .rbq-doll-bodywrap{position:relative !important;width:auto !important;min-width:120px !important;align-self:start !important}
+#rbq-panel .rbq-doll-slot,#rbq-panel .rbq-doll-item,#rbq-panel .rbq-doll-empty{min-width:0 !important;max-width:100% !important;box-sizing:border-box !important;overflow:hidden !important}
+#rbq-panel .rbq-doll-slot-label{white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important}
+#rbq-panel .rbq-doll-item-name,#rbq-panel .rbq-doll-item .rbq-hint{white-space:normal !important;word-break:break-word !important;overflow-wrap:anywhere !important}
+/* 窄面板：纸娃娃自动变两行（槽位列在上、娃娃居中） */
+@media (max-width: 560px) { #rbq-panel .rbq-doll{grid-template-columns:minmax(0,1fr) minmax(0,1fr) !important} #rbq-panel .rbq-doll-bodywrap{grid-column:1 / -1 !important;justify-self:center !important} }
+
+/* __topEntryStyle : 常驻入口按钮（跟着酒馆顶栏的观感，不抢眼但一直可点） */
+#rbq-top-entry{display:inline-flex;align-items:center;gap:4px;height:30px;padding:0 9px;margin:0 2px;border-radius:8px;
+  border:1px solid rgba(217,164,65,0.35);background:rgba(217,164,65,0.10);color:#e8cf9a;font-size:12px;line-height:1;
+  cursor:pointer;user-select:none;white-space:nowrap;transition:background .15s,border-color .15s}
+#rbq-top-entry:hover{background:rgba(217,164,65,0.20);border-color:rgba(217,164,65,0.6)}
+#rbq-top-entry:active{transform:scale(.97)}
+
+/* __noEntranceAnim : 干掉【入场动画】—— 之前 .rbq-scroll > * 每次都重播 rbq-card-in（淡入+上移 0.32s），
+   任何重建/切换都看起来像"闪一下"，这就是用户反复报的闪烁。环境类循环动画（地图脉冲/路面流动/背景漂移）保留。 */
+#rbq-panel .rbq-scroll > *, #rbq-panel .rbq-body *, #rbq-panel .rbq-pane *,
+#rbq-panel .rbq-hud-viewport > *, #rbq-panel .rbq-hud-vbody > *, #rbq-panel .rbq-card {
+  animation: none !important;
+}
+
+/* __modal : 详情弹窗（角色卡状态/技能胶囊点开） */
+.rbq-modal-mask{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;
+  background:rgba(0,0,0,0.55);backdrop-filter:blur(2px);padding:24px}
+.rbq-modal{width:min(520px,92vw);max-height:min(70vh,620px);display:flex;flex-direction:column;overflow:hidden;
+  border-radius:14px;border:1px solid rgba(217,164,65,0.45);background:linear-gradient(180deg,rgba(30,26,22,0.98),rgba(20,18,16,0.98));
+  box-shadow:0 18px 48px rgba(0,0,0,0.6);color:var(--rbq-text,#e8e2d8)}
+.rbq-modal-head{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid rgba(217,164,65,0.25)}
+.rbq-modal-title{flex:1;font-size:14px;color:#e8cf9a}
+.rbq-modal-x{cursor:pointer;padding:2px 8px;border-radius:8px;color:#e8cf9a;user-select:none}
+.rbq-modal-x:hover{background:rgba(217,164,65,0.18)}
+.rbq-modal-body{padding:12px 14px;overflow:auto;font-size:13px;line-height:1.65}
+.rbq-modal-body .rbq-kv{display:grid;grid-template-columns:minmax(72px,auto) 1fr;gap:4px 10px;margin:0}
+.rbq-modal-body .rbq-kv dt{color:#b9ac95}
+.rbq-modal-body .rbq-kv dd{margin:0;word-break:break-word}
+
+/* __modalFix : 弹窗定位加固（相对视口居中，不受祖先 transform 影响） */
+.rbq-modal-mask{position:fixed !important;left:0 !important;top:0 !important;width:100vw !important;height:100vh !important;
+  z-index:2147483000 !important;display:flex !important;align-items:center !important;justify-content:center !important;
+  margin:0 !important;padding:24px !important;box-sizing:border-box !important}
+.rbq-modal{max-height:min(70vh,620px) !important;margin:0 !important}
+/* __chipClickable : 角色卡胶囊的“可点击”手感（状态/技能） */
+#rbq-panel .rbq-tag, .rbq-modal-body .rbq-tag{cursor:pointer}
+#rbq-panel .rbq-tag{cursor:pointer;transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease}
+#rbq-panel .rbq-tag:hover{transform:translateY(-1px);box-shadow:0 2px 10px rgba(217,164,65,0.28);border-color:rgba(217,164,65,0.65)}
+#rbq-panel .rbq-tag:active{transform:translateY(0) scale(.97)}
+#rbq-panel .rbq-tag-skill::after{content:"›";margin-left:4px;opacity:.55;font-weight:600}
+#rbq-panel .rbq-tag-skill:hover::after{opacity:1}
+
+/* __relSecret : 角色卡关系行里的「私下关系」标签 */
+#rbq-panel .rbq-cc-rel-tag.rbq-rel-secret{background:rgba(190,90,120,0.16);border-color:rgba(216,120,150,0.45);color:#e6b3c4}
+
+/* __dollFix2 : 装备页纸娃娃重排 ——
+   原来中间那 8 个槽位是【绝对定位的身体挂点】（position:absolute + 固定 top），
+   而它们容器高度是 0 → 全部叠在一起（用户截图的问题）。
+   现在：三列等宽；中间列改成正常纵列；人形 SVG 退成淡背景。 */
+#rbq-panel .rbq-doll{display:grid !important;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) !important;
+  gap:10px !important;align-items:start !important;width:100% !important;padding:6px 0 10px !important}
+#rbq-panel .rbq-doll-col{display:flex !important;flex-direction:column !important;gap:8px !important;min-width:0 !important;width:auto !important}
+/* 中间列 = 普通纵列（不再靠绝对定位） */
+#rbq-panel .rbq-doll-bodywrap{position:relative !important;display:flex !important;flex-direction:column !important;
+  gap:8px !important;align-items:stretch !important;justify-content:flex-start !important;
+  width:auto !important;min-width:0 !important;height:auto !important}
+#rbq-panel .rbq-doll-marker{position:static !important;left:auto !important;top:auto !important;transform:none !important;
+  width:100% !important;max-width:none !important;margin:0 !important;z-index:1 !important}
+#rbq-panel .rbq-doll-marker .rbq-doll-slot{width:100% !important}
+/* 人形轮廓：淡背景，居中不挡内容 */
+#rbq-panel .rbq-doll-svg{position:absolute !important;left:50% !important;top:50% !important;
+  transform:translate(-50%,-50%) !important;width:150px !important;height:290px !important;
+  max-width:none !important;opacity:0.13 !important;z-index:0 !important;pointer-events:none !important}
+/* 槽位本身可读性 */
+#rbq-panel .rbq-doll-slot{position:relative !important;z-index:1 !important;min-height:46px !important}
+@media (max-width: 560px) { #rbq-panel .rbq-doll{grid-template-columns:minmax(0,1fr) minmax(0,1fr) !important}
+  #rbq-panel .rbq-doll-bodywrap{grid-column:1 / -1 !important} }
+
+/* __bodyTags : 身体状态胶囊（蓝灰，区别于装备）与装备页的身体状态小卡 */
+#rbq-panel .rbq-tag-body{background:rgba(120,150,190,0.12);border-color:rgba(130,165,205,0.35);color:#bcd0e6}
+#rbq-panel .rbq-tag-body:hover{border-color:rgba(150,190,235,0.7);box-shadow:0 2px 10px rgba(120,160,220,0.25)}
+#rbq-panel .rbq-bodybox{margin-top:10px}
+#rbq-panel .rbq-bodybox .rbq-chip{white-space:normal;word-break:break-word}
+#rbq-panel .rbq-kv-row{line-height:1.7;word-break:break-word}
+
+/* __kv2col : 角色卡里的 dt/dd 明细改两列（生理最长，之前一列铺满整屏） */
+#rbq-panel .rbq-cc-section .rbq-kv,#rbq-panel .rbq-cc-fold .rbq-kv{
+  grid-template-columns:auto minmax(0,1fr) auto minmax(0,1fr) !important;
+  column-gap:10px !important;row-gap:3px !important;align-items:baseline !important}
+#rbq-panel .rbq-cc-section .rbq-kv dt,#rbq-panel .rbq-cc-fold .rbq-kv dt{white-space:nowrap}
+#rbq-panel .rbq-cc-section .rbq-kv dd,#rbq-panel .rbq-cc-fold .rbq-kv dd{overflow:hidden;text-overflow:ellipsis}
+@media (max-width: 560px){#rbq-panel .rbq-cc-section .rbq-kv,#rbq-panel .rbq-cc-fold .rbq-kv{grid-template-columns:auto minmax(0,1fr) !important}}
+/* 微观坐标/离场状态条 */
+#rbq-panel .rbq-cc-where{margin:-2px 0 6px}
+#rbq-panel .rbq-cc-where .rbq-chip{background:rgba(120,150,190,0.10);border-color:rgba(130,165,205,0.30);color:#bcd0e6}
+
+/* __tablesPaneStable : 数据页排版固定（用户要求"任何时候都保持同一种排版"）
+   表列表固定高度、自己滚；表格区吃掉剩余高度并自己滚 —— 与内容多少无关，永远一致 */
+#rbq-panel .rbq-pane[data-pane="tables"] { display: flex; flex-direction: column; min-height: 0; }
+#rbq-panel .rbq-pane[data-pane="tables"] .rbq-tablelist {
+  flex: 0 0 auto !important; height: 156px !important; max-height: 156px !important; scroll-padding-top: 0 !important;
+  overflow-y: auto !important; padding-right: 4px;
+}
+#rbq-panel .rbq-pane[data-pane="tables"] .rbq-gridwrap {
+  flex: 1 1 auto !important; min-height: 220px !important; display: flex; flex-direction: column;
+}
+#rbq-panel .rbq-pane[data-pane="tables"] .rbq-gridscroll { flex: 1 1 auto !important; min-height: 0 !important; overflow: auto !important; }
+
+/* __tablesWidthFix : 表列表/表格区必须撑满宽度（窗口不最大化时曾塌缩成内容宽 ✗） */
+#rbq-panel .rbq-pane[data-pane="tables"] { align-items: stretch !important; }
+#rbq-panel .rbq-pane[data-pane="tables"] .rbq-tablelist {
+  width: 100% !important; min-width: 0 !important; align-self: stretch !important;
+  box-sizing: border-box !important; overflow-x: hidden !important;
+}
+#rbq-panel .rbq-pane[data-pane="tables"] .rbq-tablelist-item {
+  width: 100% !important; box-sizing: border-box !important;
+  display: flex !important; align-items: center !important; gap: 8px !important;
+}
+#rbq-panel .rbq-pane[data-pane="tables"] .rbq-tablelist-item > span:nth-child(2) { flex: 1 1 auto !important; min-width: 0 !important; }
+#rbq-panel .rbq-pane[data-pane="tables"] .rbq-gridwrap {
+  width: 100% !important; min-width: 0 !important; align-self: stretch !important; box-sizing: border-box !important;
+}
+
+/* __toastTheme : 酒馆的提示气泡改成 RBQ 的统一风格（用户要求"气泡样式也换成符合整体 UI 的样子"） */
+#toast-container > div, #toast-container > .toast {
+  background: rgba(22,20,17,.97) !important;
+  border: 1px solid var(--rbq-gold, #d9a441) !important;
+  border-left-width: 3px !important;
+  border-radius: 10px !important;
+  box-shadow: 0 10px 30px rgba(0,0,0,.55) !important;
+  color: #e8e2d6 !important;
+  opacity: 1 !important;
+  font: 13px/1.55 var(--rbq-font, system-ui, sans-serif) !important;
+  backdrop-filter: blur(8px);
+}
+#toast-container > .toast-success { border-color: #7fae6a !important; }
+#toast-container > .toast-info    { border-color: #d9a441 !important; }
+#toast-container > .toast-warning { border-color: #d9a441 !important; }
+#toast-container > .toast-error   { border-color: #c25a4a !important; }
+#toast-container > div .toast-title, #toast-container > .toast .toast-title {
+  color: var(--rbq-gold, #d9a441) !important; font-weight: 600 !important; letter-spacing: .3px;
+}
+#toast-container > div .toast-message, #toast-container > .toast .toast-message { color: #e8e2d6 !important; }
+#toast-container > div .toast-progress, #toast-container > .toast .toast-progress { background: var(--rbq-gold, #d9a441) !important; opacity: .5 !important; }
+
+/* 【用户要求】角色坞头像一圈分三段：HP 红 / MP 蓝 / SP 金 ✓（各自按百分比填充 ✓） */
+#rbq-panel .rbq-hud-3ring .rbq-ring-bg { stroke: rgba(255,255,255,.10); }
+#rbq-panel .rbq-hud-3ring .rbq-ring-hp { stroke: #e0555c; }
+#rbq-panel .rbq-hud-3ring .rbq-ring-mp { stroke: #4a7de0; }
+#rbq-panel .rbq-hud-3ring .rbq-ring-sp { stroke: #3fb950; }   /* 用户要求：跟角色卡 SP 条一致（绿） */
+#rbq-panel .rbq-hud-3ring .rbq-hud-hpring-bg,
+#rbq-panel .rbq-hud-3ring .rbq-hud-hpring-fg { stroke-width: 3.2; fill: none; }
+#rbq-panel .rbq-hud-3ring .rbq-ring-hp,
+#rbq-panel .rbq-hud-3ring .rbq-ring-mp,
+#rbq-panel .rbq-hud-3ring .rbq-ring-sp { stroke-width: 3.6; fill: none; }
+
+/* 角色坞头像图片（上传后显示 ✓ 圆形裁切 ✓） */
+#rbq-panel .rbq-hud-3ring { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+
+/* 头像图片：与老的 .rbq-hud-portrait img 保持一致（绝不要绝对定位 ✗ 会撑成一大块 ✓） */
+#rbq-panel .rbq-hud-portrait-img { width: 50px; height: 50px; border-radius: 50%; object-fit: cover; object-position: center; display: block; border: 2px solid var(--rbq-border); }

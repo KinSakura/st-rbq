@@ -1,0 +1,19 @@
+{
+  "_说明": "内置预设清单。以后换预设 = 往这个目录丢文件 + 改这里，不用改代码。kind 可选 preset(默认) / worldinfo。",
+  "items": [
+    {
+      "key": "zero",
+      "label": "斯拉RBQ · 游戏：零",
+      "file": "斯拉RBQ-零.json",
+      "kind": "preset",
+      "version": "1.0.0"
+    },
+    {
+      "key": "worldbook",
+      "label": "RBQ 世界书",
+      "file": "RBQ世界书.json",
+      "kind": "worldinfo",
+      "version": "1.0.0"
+    }
+  ]
+}
