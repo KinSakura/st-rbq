@@ -125,10 +125,23 @@ export async function importWorldInfoFile(entry, { name = '' } = {}) {
 /** 统一入口 */
 /** 已导入版本记录（key → version） */
 function importedVersions() { return store.getConfigValue('presetVersions', {}) ?? {}; }
+/** 版本数字比较（只看数字段） */
+function newerVer(a, b) {
+  const A = String(a || '').replace(/^v/i, '').split(/[.\-+]/).map((x) => parseInt(x, 10)).filter(Number.isFinite);
+  const B = String(b || '').replace(/^v/i, '').split(/[.\-+]/).map((x) => parseInt(x, 10)).filter(Number.isFinite);
+  const n = Math.max(A.length, B.length);
+  for (let i = 0; i < n; i++) { const x = A[i] ?? 0; const y = B[i] ?? 0; if (x !== y) return x > y; }
+  return false;
+}
 function rememberVersion(entry) {
   try {
     const cur = importedVersions();
-    store.updateConfig({ presetVersions: { ...cur, [entry.key]: String(entry.version ?? '') } });
+    const next = String(entry.version ?? '');
+    /* 【用户反馈 · 胶囊在 1.0.0 / 1.0.1 来回跳】
+       记住的版本只许往上走 —— 否则插件版本一变（内置清单里的号也跟着改过）
+       记录就会来回覆盖，胶囊跟着一闪一闪 ✓ */
+    if (cur[entry.key] && !newerVer(next, cur[entry.key])) return;
+    store.updateConfig({ presetVersions: { ...cur, [entry.key]: next } });
   } catch { /* ignore */ }
 }
 
@@ -138,7 +151,9 @@ export function checkUpdates() {
   const items = list().map((e) => {
     const installed = String(done[e.key] ?? '');
     const bundled = String(e.version ?? '');
-    const need = !!bundled && bundled !== installed;
+    /* 判定改成"严格更新"：只有内置版本**比记过的更新**才提示 ✓
+       （以前用 !== ✗ → 版本号来回改一下就会一直提示 ✓） */
+    const need = !!bundled && (!installed || newerVer(bundled, installed));
     return { ...e, installed, bundled, need };
   });
   return { hasUpdate: items.some((x) => x.need), items };

@@ -42,7 +42,7 @@ export const DEF = {
 
 /** 兜底源（用户没填 sourceUrl 时按顺序试 ✓） */
 export function fallbackSources() {
-  /* 【实测 · v2.11.1】jsDelivr 的 @main 缓存能落后好几版 ✗
+  /* 【实测 · v2.11.2】jsDelivr 的 @main 缓存能落后好几版 ✗
      我这边实测：jsDelivr 报 2.9.4，而 raw / GitHub API 都是 2.11.0 ✓
      所以顺序改成【raw 第一】(官方且最及时) → GitHub API → jsDelivr 只当最后兜底 ✓
      另外：某个源报的版本比本地还旧时，检查逻辑会明确提示"这是缓存"并主动去清 ✓ */
@@ -293,30 +293,85 @@ export async function bootCheck() {
   }
 }
 
-/** 一键更新：调酒馆的扩展更新接口 */
+/**
+ * 问酒馆"我这个扩展到底叫什么、装在哪"（GET /api/extensions/discover）
+ *   返回形如 [{type:'local'|'global'|'system', name:'third-party/st-rbq'}] ✓
+ *   ⚠️ update 接口会 sanitize 掉名字里的 '/' ✗ → 必须取**最后一段**当文件夹名 ✓
+ *      （也顺便解决 "GitHub ZIP 解压出来叫 st-rbq-main" 这种情况 ✓）
+ */
+async function discoverSelf(headers) {
+  try {
+    const res = await fetch('/api/extensions/discover', { method: 'GET', headers });
+    if (!res.ok) return [];
+    const list = await res.json();
+    const out = [];
+    for (const e of (Array.isArray(list) ? list : [])) {
+      const full = String(e?.name || '');
+      const folder = full.split('/').pop() || full;
+      if (!/st[\s_-]?rbq/i.test(full) && !/st[\s_-]?rbq/i.test(folder)) continue;
+      out.push({ extensionName: folder, global: String(e?.type) === 'global', full, type: String(e?.type || '') });
+    }
+    if (out.length) console.log('[RBQ] 酒馆告诉我本扩展装在：' + JSON.stringify(out));
+    return out;
+  } catch (e) { return []; }
+}
+
+/**
+ * 一键更新：调酒馆的扩展更新接口
+ *   【用户实测 · 管理扩展里能更新、插件按钮里不能】两个坑：
+ *     ① 酒馆前端会传 global（我以前没传 → 只在用户目录下找 ✗）
+ *     ② 扩展文件夹名不一定是 st-rbq（GitHub ZIP 解压出来是 st-rbq-main ✗）
+ *        而且 update 接口会把名字里的 '/' sanitize 掉 ✗ → 只能用真实文件夹名 ✓
+ *   做法：先问 discover 拿到真实名字与安装位置 ✓，再退到默认两种都试一遍 ✓
+ */
 export async function applyUpdate() {
   const c = config();
+  const headers = (() => { try { return ctx()?.getRequestHeaders?.() ?? { 'Content-Type': 'application/json' }; } catch { return { 'Content-Type': 'application/json' }; } })();
+  let found = [];
+  try { found = await discoverSelf(headers); } catch (e) { /* ignore */ }
+  const seen = new Set();
+  const tries = [];
+  for (const t of [...found, { extensionName: EXT_NAME, global: false }, { extensionName: EXT_NAME, global: true }]) {
+    const k = t.extensionName + '|' + !!t.global;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    tries.push({ extensionName: t.extensionName, global: !!t.global });
+  }
+  const tried = [];
+  let lastErr = '';
   try {
-    const headers = (() => { try { return ctx()?.getRequestHeaders?.() ?? { 'Content-Type': 'application/json' }; } catch { return { 'Content-Type': 'application/json' }; } })();
-    const res = await fetch('/api/extensions/update', {
-      method: 'POST',
-      headers: { ...headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ extensionName: EXT_NAME }),
-    });
-    const bodyText = await res.text().catch(() => '');
-    if (!res.ok) {
-      let detail = bodyText;
-      try { const j = JSON.parse(bodyText); detail = j?.message || j?.error || bodyText; } catch (e) { /* 非 JSON 就用原文 */ }
-      throw new Error('HTTP ' + res.status + (detail ? ('：' + String(detail).slice(0, 200)) : ''));
+    for (const body of tries) {
+      let res;
+      try {
+        res = await fetch('/api/extensions/update', {
+          method: 'POST',
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      } catch (e) { lastErr = String(e?.message ?? e); continue; }
+      const bodyText = await res.text().catch(() => '');
+      if (!res.ok) {
+        let detail = bodyText;
+        try { const j = JSON.parse(bodyText); detail = j?.message || j?.error || bodyText; } catch (e) { /* 非 JSON 就用原文 */ }
+        lastErr = 'HTTP ' + res.status + (detail ? ('（' + String(detail).slice(0, 160) + '）') : '');
+        console.log('[RBQ] 一键更新这一组没成：' + JSON.stringify(body) + ' → ' + lastErr);
+        continue;
+      }
+      /* 成功：酒馆回 { shortCommitHash, isUpToDate, extensionPath, remoteUrl } */
+      let info = {};
+      try { info = JSON.parse(bodyText) || {}; } catch (e) { /* ignore */ }
+      const hash = String(info.shortCommitHash || '').slice(0, 7);
+      console.log('[RBQ] 一键更新成功：' + JSON.stringify(body) + ' → ' + JSON.stringify(info));
+      if (info.isUpToDate) notify('success', '服务器那边已经是最新的了（提交 ' + hash + '）—— 刷新页面即可。');
+      else notify('success', '已更新到最新（提交 ' + (hash || '?') + '）—— 刷新页面生效。');
+      return { ok: true, info, body };
     }
-    notify('success', '更新完成，刷新页面生效。');
-    return { ok: true };
+    throw new Error(lastErr || '四种装法都没试通');
   } catch (e) {
     const msg = String(e?.message ?? e);
     const link = state.downloadUrl || c.downloadUrl;
     const zip = 'https://github.com/' + REPO + '/archive/refs/heads/main.zip';
-    /* 说清为什么：酒馆的一键更新是靠 git pull 的，手动拷贝/ZIP 装的没有仓库可拉 */
-    notify('warning', '一键更新没成功（' + msg + '）—— 如果你是手动拷贝或 ZIP 安装的，酒馆没有 git 仓库可拉，只能手动覆盖。下载：' + (link || zip));
+    notify('warning', '一键更新没成功（' + msg + '）—— 可以手动下载覆盖：' + (link || zip));
     try { console.log('[RBQ] 一键更新失败：' + msg + NL + '   手动更新包：' + zip); } catch (e2) { /* ignore */ }
     return { ok: false, error: msg, downloadUrl: link };
   }
