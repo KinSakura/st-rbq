@@ -429,6 +429,5 @@ MIT License —— 见 [LICENSE](LICENSE)。
 
 ## 致谢
 
-- 机制参考：`muyoou/st-memory-enhancement`（记忆增强表格）、`jerryzmtz/my-tavern-scripts`（视图层思路）、
-  `niccolecantdoit-rgb/DND_immersive_dashboard`（沉浸式仪表盘布局）
+- 机制参考：`muyoou/st-memory-enhancement`（记忆增强表格）
 - 以及老 RBQ 脚本 —— 本扩展是它的重做版
