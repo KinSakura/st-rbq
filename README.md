@@ -368,12 +368,9 @@ st-rbq/
 │  ├─ views/               各视图渲染器（仪表盘 / 角色卡 / 关系图 / 地图 …）
 │  ├─ styles.css tokens.css
 │  └─ progress.js          进度卡片
-├─ docs/                   GitHub 上传教程 + 发版流程
-├─ preset/视图预览.html     静态预览（浏览器直接打开即可看界面）
 └─ tools/                  开发工具（结构生成 / 别名生成 / 冒烟测试）
 ```
 
-> `preset/视图预览.html` 是**离线预览**：不用装酒馆，直接用浏览器打开就能看到界面长什么样。
 
 ---
 
@@ -398,7 +395,7 @@ node tools/build-aliases.mjs
 
 - **调试用 API**（`F12` 直接调）：
 
-发版流程（**必读**）：见 [`docs/发版流程.md`](docs/发版流程.md) —— 核心就一条：
+发版流程：改 `manifest.json` 的 `version` + 入口文件名 + 全仓 `?v=` 与角标版本，跑完测试再上传 —— 核心就一条：
 **每次发版都要改 `manifest.json` 的 `version`**，插件内置的更新检查就是比这个值 ✓
 
 ```js
