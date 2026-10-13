@@ -3,7 +3,7 @@
 > 把「剧情」交给主 AI，把「记录」交给侧路 AI。
 > 一个自包含的 SillyTavern 扩展：表格数据库 + 侧路填表 + 长期记忆 + 逐楼快照回滚 + 沉浸式视图。
 
-![版本](https://img.shields.io/badge/版本-2.9.3-d9a441)
+![版本](https://img.shields.io/badge/版本-2.9.4-d9a441)
 ![平台](https://img.shields.io/badge/平台-SillyTavern%201.12%2B-4a7de0)
 ![依赖](https://img.shields.io/badge/依赖-零构建%20%7C%20纯%20ESM-3fb950)
 
@@ -75,6 +75,7 @@
 - ✅ **预设位置标记**：预设里名字带 `🔒↓` / `🔒↑` 的提示词，自动拼到侧路提示词的上面 / 下面
 - ✅ **正则工坊**：向导式生成酒馆正则，一键装进全局正则（装完自动刷新）
 - ✅ **零构建**：纯 ESM，改完直接刷新浏览器即可
+- ✅ **内置更新提示**：自动检查 GitHub 仓库的新版本 → 顶部横幅 + 一键更新（多源兜底，国内一般能通）
 
 ---
 
@@ -365,6 +366,7 @@ st-rbq/
 │  ├─ views/               各视图渲染器（仪表盘 / 角色卡 / 关系图 / 地图 …）
 │  ├─ styles.css tokens.css
 │  └─ progress.js          进度卡片
+├─ docs/                   GitHub 上传教程 + 发版流程
 ├─ preset/视图预览.html     静态预览（浏览器直接打开即可看界面）
 └─ tools/                  开发工具（结构生成 / 别名生成 / 冒烟测试）
 ```
@@ -394,6 +396,9 @@ node tools/build-aliases.mjs
 
 - **调试用 API**（`F12` 直接调）：
 
+发版流程（**必读**）：见 [`docs/发版流程.md`](docs/发版流程.md) —— 核心就一条：
+**每次发版都要改 `manifest.json` 的 `version`**，插件内置的更新检查就是比这个值 ✓
+
 ```js
 RBQ.sidePreviewPrompt('一段正文')  // 看侧路这次会发出去什么
 RBQ.previewTableData()            // 看发给主 AI 的表格数据
@@ -401,6 +406,9 @@ RBQ.personaStatus()               // 角色设定状态
 RBQ.personaApply()                // 手动跑一次包裹
 RBQ.sideTest()                    // 测侧路连接
 RBQ.getAll()                      // 当前所有表
+RBQ.updateStatus()                // 更新检查状态（当前/远端/用的哪个源）
+RBQ.updateCheck({force:true})     // 立刻查一次更新
+RBQ.updateRepo()                  // 仓库地址
 RBQ.getRev()                      // 当前版本号
 ```
 
@@ -410,6 +418,7 @@ RBQ.getRev()                      // 当前版本号
 
 | 版本 | 要点 |
 |---|---|
+| **2.9.4** | 内置更新检查接通 GitHub（多源兜底 + 启动自动查 + 顶部横幅 + 一键更新 + 忽略此版本） |
 | **2.9.x** | 角色设定包裹（自动 + 改完不刷新即生效）、设置页整理、修头像尺寸 / 清除 / 三段圈配色、正则装完自动刷新 |
 | **2.8.x** | 预设位置标记（🔒↓ / 🔒↑）、修 `ctx()` 返回克隆导致的写入无效 |
 | **2.7.x** | 头像上传修复、三段圈（HP/MP/SP）、标签页顺序重排、工坊不再闪烁 |

@@ -109,7 +109,7 @@ function buildPanel() {
   const header = el('div', { class: 'rbq-header' }, [
     el('span', { class: 'rbq-drag-handle', text: '⠿', title: '按住拖动面板', style: 'cursor:move;opacity:.6;margin-right:6px;user-select:none' }),
     el('div', { class: 'rbq-title', html: '📊 RBQ 数据库 <small class="rbq-sub"></small>' }),
-      el('span', { class: 'rbq-ver-badge', text: 'v2.9.3' }),
+      el('span', { class: 'rbq-ver-badge', text: 'v2.9.4' }),
     el('button', { class: 'rbq-btn rbq-icon', title: '刷新', onclick: () => render() }, '⟳'),
     el('button', { class: 'rbq-btn rbq-icon', title: '收起', onclick: () => hidePanel() }, '✕'),
   ]);
@@ -605,7 +605,7 @@ function renderViewsPane() {
     renderViewport: (key, el2) => renderViewportInto(key, el2),
   };
 
-  import('./views/dashboard.js?v=2930')
+  import('./views/dashboard.js?v=2940')
     .then((m) => m.renderDashboard(host, api))
     .catch((e) => {
       host.textContent = '';
@@ -621,7 +621,7 @@ function renderViewsPane() {
     const panel = el('div', { class: 'rbq-cc-panel' });
     overlay.appendChild(panel);
     pane.appendChild(overlay);
-    import('./views/characterCard.js?v=2930')
+    import('./views/characterCard.js?v=2940')
       .then((m) => m.renderCharacterCard(panel, state.card, {
         el,
         onClose: () => { state.card = null; render(); },
@@ -706,20 +706,20 @@ function __renderViewportInto(key, hostEl) {
     hostEl.textContent = '';
     hostEl.appendChild(el('div', { class: 'rbq-empty', text: `加载失败：${e?.message ?? e}` }));
   };
-  if (key === 'extras') return import('./views/extrasLines.js?v=2930').then((m) => m.renderExtras(hostEl, sub));
-  if (key === 'relations') return import('./views/relations.js?v=2930').then((m) => m.renderRelations(hostEl, sub));
-  if (key === 'map') return import('./views/map.js?v=2930').then((m) => m.renderMap(hostEl, sub));
+  if (key === 'extras') return import('./views/extrasLines.js?v=2940').then((m) => m.renderExtras(hostEl, sub));
+  if (key === 'relations') return import('./views/relations.js?v=2940').then((m) => m.renderRelations(hostEl, sub));
+  if (key === 'map') return import('./views/map.js?v=2940').then((m) => m.renderMap(hostEl, sub));
   if (key === 'inventory' || key === 'equipment') {
-    return import('./views/inventory.js?v=2930').then((m) => (key === 'inventory' ? m.renderInventory(hostEl, sub) : m.renderEquipment(hostEl, sub)));
+    return import('./views/inventory.js?v=2940').then((m) => (key === 'inventory' ? m.renderInventory(hostEl, sub) : m.renderEquipment(hostEl, sub)));
   }
   if (GRAPH_VIEWS.has(key)) {
-    return import('./views/graphs.js?v=2930').then((m) => {
+    return import('./views/graphs.js?v=2940').then((m) => {
       const map = { quests: m.renderQuestBoard, skills: m.renderSkillWheel, monsters: m.renderThreats, factions: m.renderFactionWeb, chronicle: m.renderEraTimeline };
       (map[key] ?? m.renderQuestBoard)(hostEl, sub);
     }).catch(fail);
   }
   if (PANEL_VIEWS.has(key)) {
-    return import('./views/panels.js?v=2930').then((m) => {
+    return import('./views/panels.js?v=2940').then((m) => {
       const hit = m.PANELS.find(([k]) => k === key);
       if (!hit) { hostEl.textContent = ''; hostEl.appendChild(el('div', { class: 'rbq-empty', text: `没有名为 ${key} 的视图` })); return; }
       hit[2](hostEl, sub);
@@ -1872,7 +1872,16 @@ function attachSettingsExtras() {
   const st = updater.status();
   const upd = el('div', { class: 'rbq-card', 'data-rbq-upd': '1' }, [
     el('h4', { text: '插件更新' }),
-    el('div', { class: 'rbq-hint', text: '当前版本 ' + st.current + (st.latest ? ('　远端 ' + st.latest + (st.hasUpdate ? '（有新版本）' : '（已是最新）')) : '') }),
+    /* 状态行：把"当前 / 远端 / 什么时候查的 / 有没有忽略"都说清楚 ✓ */
+    el('div', {
+      class: 'rbq-hint',
+      text: (() => {
+        const when = st.at ? new Date(st.at).toLocaleTimeString() : '';
+        if (!st.latest) return '当前版本 ' + st.current + (st.error ? ('　（检查失败：' + st.error + '）') : '　（还没检查）');
+        if (st.hasUpdate) return '当前版本 ' + st.current + '　→　有新版本 ' + st.latest + (when ? ('　（' + when + ' 检查）') : '') + (st.dismissed ? '　[已忽略]' : '');
+        return '当前版本 ' + st.current + '　已是最新 ✓' + (when ? ('　（' + when + ' 检查）') : '');
+      })(),
+    }),
   ]);
   const c = updater.config();
   const mkInput = (label, key) => {
@@ -1882,11 +1891,20 @@ function attachSettingsExtras() {
   };
   upd.appendChild(mkInput('更新源 URL', 'sourceUrl'));
   upd.appendChild(mkInput('下载地址', 'downloadUrl'));
-  upd.appendChild(el('div', { class: 'rbq-hint', text: '更新源填远端 manifest.json 的地址；填了才会检查更新。' }));
+  upd.appendChild(el('div', { class: 'rbq-hint', text: '更新源默认就是本项目的 GitHub 仓库（多源兜底：jsDelivr → raw.githubusercontent → GitHub API，国内一般能通 ✓）。想换镜像再改上面那栏 ✓' }));
+  try {
+    upd.appendChild(el('div', {
+      class: 'rbq-hint',
+      text: '仓库：' + (st.repo || updater.REPO_URL)
+        + (st.source ? ('　本次用的源：' + String(st.source).replace(/^https?:\/\//, '').slice(0, 46)) : ''),
+    }));
+  } catch (e) { /* ignore */ }
   upd.appendChild(el('div', { class: 'rbq-row' }, [
     el('button', { class: 'rbq-btn rbq-primary', text: '检查更新', onclick: async () => { const s2 = await updater.check({ force: true }); notify(s2.hasUpdate ? 'success' : 'info', s2.hasUpdate ? ('有新版本 ' + s2.latest) : (s2.error ? ('检查失败：' + s2.error) : '已是最新')); render(); } }),
     el('button', { class: 'rbq-btn', text: '立即更新', onclick: async () => { await updater.applyUpdate(); render(); } }),
-  ]));
+    el('button', { class: 'rbq-btn', text: '打开仓库', onclick: () => { try { window.open(updater.REPO_URL, '_blank'); } catch (e) { /* ignore */ } } }),
+    (st.hasUpdate ? el('button', { class: 'rbq-btn', text: '忽略此版本', title: '不再为这个版本显示顶部横幅', onclick: () => { updater.dismiss(); render(); } }) : null),
+  ].filter(Boolean)));
   host.insertBefore(upd, host.firstChild);
 
   const pi = el('div', { class: 'rbq-card', 'data-rbq-pi': '1' }, [
@@ -2265,7 +2283,7 @@ function renderSettingsPane() {
         sel.addEventListener('change', () => {
           store.updateConfig({ inputButton: { placement: sel.value } });
           notify('info', '位置已切换，重新注入按钮…');
-          import('./inputButton.js?v=2930').then((m) => { m.stopInputButton(); m.startInputButtonInjection(); });
+          import('./inputButton.js?v=2940').then((m) => { m.stopInputButton(); m.startInputButtonInjection(); });
           render();
         });
         return sel;

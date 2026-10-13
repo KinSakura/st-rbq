@@ -32,14 +32,14 @@ import { extractProse } from './core/prose.js';
 import * as sidePipeline from './core/sidePipeline.js';
 import { expandUnparsed } from './core/expand.js';
 import * as persona from './core/persona.js';
-import * as progress from './ui/progress.js?v=2930';
+import * as progress from './ui/progress.js?v=2940';
 import { closeNotify } from './core/ctx.js';
 import * as updater from './core/updater.js';
 import * as presetImport from './core/presetImport.js';
 import * as summary from './core/summary.js';
 import { macroTableData, macroTablePrompt, macroAllTablesJson, buildTableData } from './prompts/prompts.js';
-import { mountPanel, showPanel, togglePanel, refreshPanel } from './ui/panel.js?v=2930';
-import { startInputButtonInjection, setPanelOpener, refreshBadge, stopInputButton } from './ui/inputButton.js?v=2930';
+import { mountPanel, showPanel, togglePanel, refreshPanel } from './ui/panel.js?v=2940';
+import { startInputButtonInjection, setPanelOpener, refreshBadge, stopInputButton } from './ui/inputButton.js?v=2940';
 
 const VERSION = '0.1.0';
 let initialized = false;
@@ -900,6 +900,9 @@ function exposeApi() {
     sidePreviewPrompt: (text) => { try { return sidePipeline.fillPrompt(String(text ?? ""), sideApi.config()); } catch (e) { return "ERR " + e.message; } },
     sidePreview: (task, text, round) => sidePipeline.preview(task, text, round),
     updateStatus: () => updater.status(),
+    updateBootCheck: () => updater.bootCheck(),
+    updateRepo: () => updater.REPO_URL,
+    updateDismiss: () => updater.dismiss(),
     updateCheck: (opts) => updater.check(opts),
     updateApply: () => updater.applyUpdate(),
     bundledPresets: () => presetImport.list(),
@@ -1000,6 +1003,8 @@ function safeBoot() {
     boot();
     /* 启动时给缺快照的旧楼层回填一次（聊天这时已经加载好了 ✓） */
     try { backfillAnchors(); } catch (e) { /* ignore */ }
+    /* 插件更新：启动后自动查一次（多源兜底 ✓）有新版本提示一次 ✓ 失败静默 ✓ */
+    setTimeout(() => { try { updater.bootCheck(); } catch (e) { /* ignore */ } }, 6000);
     /* 角色设定自动处理（老 RBQ 的功能 ✓ 自动、不弹气泡 ✓） */
     try { personaAutoApply(); } catch (e) { /* ignore */ }
     console.log('[RBQ] 启动完成。');

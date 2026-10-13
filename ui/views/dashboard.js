@@ -137,7 +137,7 @@ export function renderDashboard(host, api) {
   const compass = el('button', { class: 'rbq-compass', title: '切换视图' }, [el('span', { text: '✦' })]);
   const compassMenu = el('div', { class: 'rbq-compass-menu' });
   // 版本号放菜单顶部（菜单每次打开都会重建，不会像标题那样被覆盖）
-  compassMenu.appendChild(el('div', { class: 'rbq-ver-head', text: 'RBQ v2.9.3' }));
+  compassMenu.appendChild(el('div', { class: 'rbq-ver-head', text: 'RBQ v2.9.4' }));
   for (const [key, label] of api.views) {
     const item = el('button', {
       class: `rbq-compass-item${api.currentView === key ? ' rbq-active' : ''}`,

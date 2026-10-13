@@ -14,17 +14,55 @@ import { ctx, notify } from './ctx.js';
 
 export const EXT_NAME = 'st-rbq';
 
-/** 本地版本（从 manifest.json 读，失败则回退） */
+/** 本地版本（启动时从扩展自己的 manifest.json 读 ✓ 读不到再回退） */
 let localVersion = '0.1.0';
 export function setLocalVersion(v) { if (v) localVersion = String(v); }
 export function getLocalVersion() { return localVersion; }
 
+/** 本项目仓库（发布用 ✓） */
+export const REPO = 'KinSakura/st-rbq';
+export const REPO_URL = 'https://github.com/' + REPO;
+
+/**
+ * 更新源：**多源兜底** ✓
+ *   国内直连 raw.githubusercontent 常不通 ✗ → 优先 jsDelivr（一般能通 ✓），再退 raw，最后退 GitHub API ✓
+ *   用户自己填了 sourceUrl 就只用他填的那个 ✓
+ */
 export const DEF = {
   enabled: true,
-  sourceUrl: '',            // 远端 manifest.json 地址；空 = 不检查
-  downloadUrl: '',          // 兜底下载地址（更新失败时提示）
-  dismissVersion: '',       // 用户点过"稍后"的版本
+  sourceUrl: 'https://cdn.jsdelivr.net/gh/' + REPO + '@main/manifest.json',
+  downloadUrl: REPO_URL,
+  dismissVersion: '',       // 用户点过"忽略"的版本
+  notifiedVersion: '',      // 已经提示过的版本（避免每次打开都弹）
+  autoCheck: true,          // 启动时自动查一次
 };
+
+/** 兜底源（用户没填 sourceUrl 时按顺序试 ✓） */
+export function fallbackSources() {
+  return [
+    'https://cdn.jsdelivr.net/gh/' + REPO + '@main/manifest.json',
+    'https://raw.githubusercontent.com/' + REPO + '/main/manifest.json',
+    'https://api.github.com/repos/' + REPO + '/contents/manifest.json',
+  ];
+}
+
+/**
+ * 读"本地版本"：从扩展自己的 manifest.json（用 import.meta.url 定位 ✓ 不依赖酒馆 API ✓）
+ *   ⚠️ 以前没人调 setLocalVersion ✗ → localVersion 一直是 0.1.0 ✓
+ *      会变成"永远显示有新版本" ✗ 所以这里自己读一次 ✓
+ */
+export async function initLocalVersion() {
+  try {
+    const url = new URL('../manifest.json', import.meta.url);
+    const res = await fetch(url, { cache: 'no-store' });
+    if (res.ok) {
+      const j = await res.json();
+      setLocalVersion(j?.version);
+      return localVersion;
+    }
+  } catch (e) { /* ignore */ }
+  return localVersion;
+}
 
 export function config() { return { ...DEF, ...(store.getConfigValue('update', {}) ?? {}) }; }
 export function setConfig(patch = {}) { const next = { ...config(), ...patch }; store.updateConfig({ update: next }); return next; }
@@ -57,6 +95,7 @@ export function isNewer(a, b) {
 
 const state = {
   checked: false,
+  source: '',
   checking: false,
   latest: '',
   error: '',
@@ -80,7 +119,9 @@ export function status() {
     error: state.error,
     at: state.at,
     sourceUrl: c.sourceUrl,
-    downloadUrl: c.downloadUrl,
+    downloadUrl: c.downloadUrl || DEF.downloadUrl,
+    source: state.source || '',
+    repo: REPO_URL,
   };
 }
 
@@ -90,22 +131,54 @@ export function dismiss() {
   return status();
 }
 
-/** 检查更新（可重复调用；带 in-flight 去重） */
+/** 从远端 JSON 里取版本号（兼容 GitHub API 那种 base64 包裹的返回 ✓） */
+function versionFromJson(j) {
+  if (j && typeof j === 'object' && typeof j.content === 'string' && !j.version) {
+    try {
+      const txt = atob(String(j.content).replace(/\s/g, ''));
+      const parsed = JSON.parse(txt);
+      return String(parsed?.version ?? '').trim();
+    } catch (e) { /* ignore */ }
+  }
+  return String(j?.version ?? j?.Version ?? '').trim();
+}
+
+/** 按顺序试多个源，第一个成功的就算 ✓（返回用过的源地址 ✓） */
+async function fetchLatest(sources) {
+  const errs = [];
+  for (const url of sources) {
+    try {
+      const res = await fetch(url, { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const j = await res.json();
+      const v = versionFromJson(j);
+      if (!v) throw new Error('没有 version 字段');
+      return { version: v, source: url };
+    } catch (e) { errs.push(String(url).replace(/^https?:\/\//, '').slice(0, 28) + ':' + String(e?.message ?? e).slice(0, 24)); }
+  }
+  throw new Error(errs.join(' | ') || '全部更新源都失败');
+}
+
+/**
+ * 检查更新（可重复调用；带 in-flight 去重）
+ *   用户填了 sourceUrl → 只试它 ✓；没填 → 走多源兜底 ✓
+ */
 export async function check({ force = false } = {}) {
   const c = config();
   if (c.enabled === false) return status();
-  if (!String(c.sourceUrl).trim()) { state.checked = true; state.error = '未配置更新源'; return status(); }
   if (state.checking) return status();
   if (state.checked && !force) return status();
   state.checking = true;
   state.error = '';
   try {
-    const res = await fetch(String(c.sourceUrl).trim(), { cache: 'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const j = await res.json();
-    state.latest = String(j?.version ?? j?.Version ?? '').trim();
-    state.downloadUrl = String(j?.download ?? c.downloadUrl ?? '').trim();
-    if (!state.latest) throw new Error('远端 manifest 没有 version 字段');
+    if (!localVersion || localVersion === '0.1.0') { try { await initLocalVersion(); } catch (e) { /* ignore */ } }
+    const custom = String(c.sourceUrl ?? '').trim();
+    const def = String(DEF.sourceUrl).trim();
+    const sources = (custom && custom !== def) ? [custom] : fallbackSources();
+    const r = await fetchLatest(sources);
+    state.latest = r.version;
+    state.source = r.source;
+    state.downloadUrl = String(c.downloadUrl || DEF.downloadUrl || '').trim();
   } catch (e) {
     state.error = String(e?.message ?? e);
     state.latest = '';
@@ -115,6 +188,32 @@ export async function check({ force = false } = {}) {
     state.at = Date.now();
   }
   return status();
+}
+
+/**
+ * 启动时自动查一次 + **有新版本就提示一次**（同一个版本只提示一次 ✓）
+ *   @returns {Promise<{shown:boolean, latest:string}>}
+ */
+export async function bootCheck() {
+  try {
+    const c = config();
+    if (c.enabled === false || c.autoCheck === false) return { shown: false, latest: '' };
+    await initLocalVersion();
+    const st = await check({ force: false });
+    if (st.hasUpdate && c.notifiedVersion !== st.latest) {
+      setConfig({ notifiedVersion: st.latest });
+      try {
+        notify('info', 'RBQ 数据库有新版本 ' + st.latest + '（当前 ' + st.current + '）—— 面板「设置 → 插件更新」可一键更新，或去 ' + (st.downloadUrl || DEF.downloadUrl));
+      } catch (e) { /* ignore */ }
+      console.log('[RBQ] 发现新版本：' + st.latest + '（当前 ' + st.current + '，源 ' + (state.source || '') + '）');
+      return { shown: true, latest: st.latest };
+    }
+    console.log('[RBQ] 版本检查：当前 ' + st.current + (st.latest ? ('，远端 ' + st.latest + (st.hasUpdate ? '（有新版）' : '（已是最新）')) : ('（没查到：' + st.error + '）')));
+    return { shown: false, latest: st.latest };
+  } catch (e) {
+    console.warn('[RBQ] 版本检查失败（不影响使用）', e);
+    return { shown: false, latest: '' };
+  }
 }
 
 /** 一键更新：调酒馆的扩展更新接口 */

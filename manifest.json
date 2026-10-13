@@ -4,11 +4,11 @@
   "requires": [],
   "optional": [],
   "js": [
-    "boot-v2930.js"
+    "boot-v2940.js"
   ],
   "css": "ui/styles.css",
   "author": "RBQ",
-  "version": "2.9.3",
+  "version": "2.9.4",
   "homePage": "",
   "auto_update": false
 }
