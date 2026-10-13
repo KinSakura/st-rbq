@@ -32,14 +32,14 @@ import { extractProse, extractProseStrict } from './core/prose.js';
 import * as sidePipeline from './core/sidePipeline.js';
 import { expandUnparsed } from './core/expand.js';
 import * as persona from './core/persona.js';
-import * as progress from './ui/progress.js?v=21120';
+import * as progress from './ui/progress.js?v=21150';
 import { closeNotify } from './core/ctx.js';
 import * as updater from './core/updater.js';
 import * as presetImport from './core/presetImport.js';
 import * as summary from './core/summary.js';
 import { macroTableData, macroTablePrompt, macroAllTablesJson, buildTableData } from './prompts/prompts.js';
-import { mountPanel, showPanel, togglePanel, refreshPanel } from './ui/panel.js?v=21120';
-import { startInputButtonInjection, setPanelOpener, refreshBadge, stopInputButton } from './ui/inputButton.js?v=21120';
+import { mountPanel, showPanel, togglePanel, refreshPanel } from './ui/panel.js?v=21150';
+import { startInputButtonInjection, setPanelOpener, refreshBadge, stopInputButton } from './ui/inputButton.js?v=21150';
 
 const VERSION = '0.1.0';
 let initialized = false;
@@ -703,10 +703,17 @@ async function handleGenerationEndedResolved(target) {
       /* 进度气泡上的「终止」按钮：中止本次侧路调用（同时把酒馆的生成也停掉） */
       try {
         progress.setAbort?.(() => {
+          /* 【用户反馈 · 点了终止不会马上停】以前只 abort 了这一个 AbortController ✗
+             而收口定时器与其它任务看的是 isAbortRequested()/isFrozen() ✗ → 它们照跑 ✓
+             现在三个一起上：中止请求 + 立中止标志 + 冻结写入 + 清掉待跑的收口 ✓ */
           try { ac.abort(); } catch (e) { /* ignore */ }
+          try { sidePipeline.requestAbort?.(); } catch (e) { /* ignore */ }
+          try { sidePipeline.freezeFor?.(60000); } catch (e) { /* ignore */ }
+          try { sidePipeline.cancelPending?.(); } catch (e) { /* ignore */ }
           try { ctx()?.stopGeneration?.(); } catch (e) { /* ignore */ }
-          try { progress.update('fill', 'failed', '已请求终止'); } catch (e) { /* ignore */ }
-          console.log('[RBQ] 用户点了进度气泡上的「终止」');
+          try { progress.update('fill', 'failed', '已终止'); } catch (e) { /* ignore */ }
+          try { notify('info', '已终止本次侧路任务（表格不会再被写回）'); } catch (e) { /* ignore */ }
+          console.log('[RBQ] 用户点了「终止」→ 已中止请求并冻结写入');
         });
       } catch (e) { /* ignore */ }
       /* 用酒馆原生的「生成中」状态：发送键会变成终止圆钮（#mes_stop），点它中止本轮侧路 */

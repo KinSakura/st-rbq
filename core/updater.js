@@ -42,7 +42,7 @@ export const DEF = {
 
 /** 兜底源（用户没填 sourceUrl 时按顺序试 ✓） */
 export function fallbackSources() {
-  /* 【实测 · v2.11.2】jsDelivr 的 @main 缓存能落后好几版 ✗
+  /* 【实测 · v2.11.5】jsDelivr 的 @main 缓存能落后好几版 ✗
      我这边实测：jsDelivr 报 2.9.4，而 raw / GitHub API 都是 2.11.0 ✓
      所以顺序改成【raw 第一】(官方且最及时) → GitHub API → jsDelivr 只当最后兜底 ✓
      另外：某个源报的版本比本地还旧时，检查逻辑会明确提示"这是缓存"并主动去清 ✓ */

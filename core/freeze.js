@@ -27,8 +27,17 @@ export function allowedWhileFrozen(source) { return ALLOW.has(String(source ?? "
    所以做法是：**记一个标志** —— 后续任务不再开跑、后续写表一律拦下 ✓
    不然会出现"点了终止、侧路照样跑完、数据照样写进去"（用户实测 ✗） */
 let abortRequested = false;
-export function requestAbort() { abortRequested = true; try { console.log('[RBQ] 已记录「用户中止」标志：后续任务与写入都会停下'); } catch (e) { /* ignore */ } }
-export function isAbortRequested() { return abortRequested; }
+let abortAt = 0;
+export function requestAbort() { abortRequested = true; abortAt = Date.now(); try { console.log('[RBQ] 已记录「用户中止」标志：后续任务与写入都会停下'); } catch (e) { /* ignore */ } }
+/* Abort flag auto-expires: otherwise one Terminate click would block every later write forever. */
+const ABORT_TTL_MS = 5 * 60 * 1000;
+export function isAbortRequested() {
+  if (abortRequested && abortAt && (Date.now() - abortAt) > ABORT_TTL_MS) {
+    abortRequested = false;
+    try { console.log('[RBQ] abort flag expired (5 min) -> writes allowed again'); } catch (e) { /* ignore */ }
+  }
+  return abortRequested;
+}
 export function clearAbort() { abortRequested = false; }
 
 /*

@@ -107,6 +107,16 @@ export function takeIgnoreGenerationEnded() {
   return false;
 }
 
+/* 最近一次侧路失败的原因（面板上直接显示 ✓ 用户不用开控制台也能看到） */
+let lastErr = { message: '', url: '', status: 0, at: 0 };
+export function lastError() { return { ...lastErr }; }
+export function clearLastError() { lastErr = { message: '', url: '', status: 0, at: 0 }; }
+function lastErrorSet(message, info = {}) {
+  lastErr = { message: String(message || ''), url: String(info.url || ''), status: Number(info.status) || 0, at: Date.now() };
+  try { console.warn('[RBQ] 侧路失败：' + lastErr.message); } catch (e) { /* ignore */ }
+}
+function lastErrorClear() { lastErr = { message: '', url: '', status: 0, at: 0 }; }
+
 export function config() {
   const c = store.getConfigValue('sideApi', {}) ?? {};
   return {
@@ -279,10 +289,13 @@ export async function call(prompt, { system = '', extras = null, task = 'fill', 
   await acquire(Math.max(1, Number(c.maxConcurrency) || 3));
   try {
     const url = String(c.url).trim().replace(/\/+$/, '') + '/chat/completions';
+    /* 用户可以在面板上填「输出上限」把上限抬高（只抬不降 ✓ 不填就用各任务自带的值） */
+    const capUser = Number(c.maxTokens) || 0;
+    const useMax = capUser > 0 ? Math.max(capUser, maxTokens) : maxTokens;
     const body = {
       model: c.model || undefined,
       temperature,
-      max_tokens: maxTokens,
+      max_tokens: useMax,
       messages: [
         { role: 'system', content: asSystem },
         { role: 'assistant', content: THOUGHT_PREFILL },   // 预填思考开头，逼模型进入填表模式（参考 xingv2.6）
@@ -307,9 +320,64 @@ export async function call(prompt, { system = '', extras = null, task = 'fill', 
       body: JSON.stringify(body),
       signal: sig,
     }), Number(c.timeoutMs) || DEF.timeoutMs, () => { try { ctrl?.abort(); } catch { /* ignore */ } });
-    if (!res.ok) throw new Error('侧路 HTTP ' + res.status + '：' + hintOf('HTTP ' + res.status));
-    const j = await res.json();
-    return String(j?.choices?.[0]?.message?.content ?? '');
+    if (!res.ok) {
+      /* 【用户反馈 · 看不到失败原因】以前只带一个 HTTP 码 ✗ 把服务器真正说的话丢了 ✓
+         现在把响应体也抓出来（很多坑只能从这里看出来：
+           模型名写错 → model not found；key 不对 → invalid api key；
+           超过上下文 → context length exceeded；被反代挡了 → 一段 HTML ✓） */
+      let detail = '';
+      try { detail = await res.text(); } catch (e) { /* ignore */ }
+      /* 服务端嫌 max_tokens 太大 → 自动降到 8192 再试一次 ✓（不同服务上限差别很大 ✓） */
+      if (res.status === 400 && /max_?tokens/i.test(String(detail)) && useMax > 4096) {
+        try {
+          /* 逐级下探：24000 → 16000 → 8192 → 4096，哪一档服务端接受就用哪一档 ✓ */
+          const ladder = [16000, 8192, 4096].filter((x) => x < useMax);
+          for (const step of ladder) {
+            try {
+              const rs = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + c.key }, body: JSON.stringify({ ...body, max_tokens: step }), signal: sig });
+              if (!rs.ok) continue;
+              const rawS = await rs.text();
+              const jS = JSON.parse(rawS);
+              try { console.warn('[RBQ] 服务端不接受 max_tokens=' + useMax + ' → 已自动降到 ' + step + ' 重试成功 ✓'); } catch (e) { /* ignore */ }
+              lastErrorClear();
+              return String(jS?.choices?.[0]?.message?.content ?? '');
+            } catch (e) { /* 继续下一档 */ }
+          }
+          const res2 = await (async () => null)();
+          /* 上面已用逐级下探处理完毕 */
+        } catch (e) { /* ignore，继续走原来的报错 */ }
+      }
+      detail = String(detail || '').replace(/\s+/g, ' ').trim().slice(0, 400);
+      const msg = '侧路 HTTP ' + res.status + (detail ? ('：' + detail) : ('：' + hintOf('HTTP ' + res.status)));
+      lastErrorSet(msg, { url, status: res.status });
+      throw new Error(msg);
+    }
+    let raw = '';
+    try { raw = await res.text(); } catch (e) { /* ignore */ }
+    let j = null;
+    try { j = JSON.parse(raw); } catch (e) {
+      const short = String(raw || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+      const msg = '侧路返回的不是 JSON（可能是反向代理/登录页/被拦了）：' + short;
+      lastErrorSet(msg, { url, status: res.status });
+      throw new Error(msg);
+    }
+    const fin = String(j?.choices?.[0]?.finish_reason ?? '');
+    const out = String(j?.choices?.[0]?.message?.content ?? '');
+    /* 输出被截断 = <data> 断掉 = 填表失败 ✓ 必须让人一眼看到原因 ✓ */
+    if (fin === 'length') {
+      const msg = '侧路输出被截断（max_tokens=' + useMax + ' 用完了）—— 表格没填完或者 JSON 断了。'
+        + ' 处理：把上面「输出上限」调大，或把「填表」改成只更新必要的表 ✓';
+      lastErrorSet(msg, { url, status: res.status });
+      try { console.warn('[RBQ] ' + msg); } catch (e) { /* ignore */ }
+      /* 截断的输出仍然交给上层去解析（可能还能救回一部分）✓ 但先记下原因 ✓ */
+    }
+    if (!out && j?.error) {
+      const msg = '侧路返回了错误：' + JSON.stringify(j.error).slice(0, 300);
+      lastErrorSet(msg, { url, status: res.status });
+      throw new Error(msg);
+    }
+    lastErrorClear();
+    return out;
   } finally {
     release();
   }

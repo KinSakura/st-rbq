@@ -533,7 +533,7 @@ export async function taskMemoryFollowUp(text, cfg, signal = null) {
     const base = memoryPrompt(text, cfg);
     const prompt = base + '\n\n【补写要求】只给下面这些角色写（他们本轮刚登场，还没有记忆）：' + missing.join('、') +
       '\n**必须包含 ' + missing.join('、') + ' 每一个人**，每人一段 <character_memory>。';
-    const out = await sideApi.call(prompt, { task: 'memory', temperature: 0.4, maxTokens: 2400, signal, extras: presetExtras() });
+    const out = await sideApi.call(prompt, { task: 'memory', temperature: 0.4, maxTokens: 7200, signal, extras: presetExtras() });
     /* 【修 bug】以前这里写的是 memory.parseMemoryBody(out) ✗ ——
        那个函数返回的是"字段对象"（给单条正文用的 ✓），根本不是条目数组 ✗
        → addMemories 收到对象直接抛 `(items ?? []) is not iterable` ✗
@@ -582,13 +582,22 @@ function supplementPrompt(list, text) {
     String(text ?? "").slice(0, 6000),
   ]).join(String.fromCharCode(10));
 }
+/* 【用户反馈 · 点了终止不会马上停】收口定时器要能被"终止"立刻叫停 ✓ */
+let __cancelled = false;
+export function cancelPending() {
+  __cancelled = true;
+  try { console.log('[RBQ] 已取消待跑的收口（终止后不再写回表格）'); } catch (e) { /* ignore */ }
+  return true;
+}
+export function resumeAfterCancel() { __cancelled = false; }
+
 export async function taskFill(text, cfg, signal = null) {
   if (isFrozen()) { console.log("[RBQ] 冻结期内，跳过本轮填表"); return { applied: 0, ops: 0, frozen: true }; }
   // 自愈：开头先把上一轮漏下的兜底补上（收尾时机不对时会有残留，这里兜住）
   try { fixDerivedFields(); } catch (e) { /* ignore */ }
   try { finalFill(); } catch (e) { /* ignore */ }
   await new Promise((r) => setTimeout(r, 800));   // 让 applyOps 落盘，别和新写入打架
-  const out = await sideApi.call(fillPrompt(text, cfg), { task: 'fill', temperature: 0.2, maxTokens: 8000, signal, extras: presetExtras() });
+  const out = await sideApi.call(fillPrompt(text, cfg), { task: 'fill', temperature: 0.2, maxTokens: 24000, signal, extras: presetExtras() });
   /* 诊断：真 API 常被 max_tokens / 预设回复长度截断 → 把"返回多长、有没有收尾"打出来 */
   try {
     const __s = String(out ?? '');
@@ -630,7 +639,7 @@ export async function taskFill(text, cfg, signal = null) {
     const miss = missingCells();
     if (miss.length) {
       sup.tried = true; sup.missing = miss.length;
-      const out2 = await sideApi.call(supplementPrompt(miss, cleanInput(text)), { task: "fill", temperature: 0.2, maxTokens: 6000, signal });
+      const out2 = await sideApi.call(supplementPrompt(miss, cleanInput(text)), { task: "fill", temperature: 0.2, maxTokens: 18000, signal });
       let ops2 = [];
       try { const pr = protocol.parseAll(out2); ops2 = Array.isArray(pr) ? pr : (pr?.ops ?? pr?.expanded?.ops ?? []); } catch { ops2 = []; }
       if (ops2.length) { const r2 = await txn.applyOps(ops2, { source: "side" }); sup.applied = r2?.applied ?? 0; }
@@ -639,8 +648,10 @@ export async function taskFill(text, cfg, signal = null) {
   /* 持续收口：填表/补写的写入是异步落盘的，收口只跑一次会被后来的写入覆盖 ✗
      → 从现在起 60 秒内每 4 秒收口一次（只补空格，不会改已有值），保证最后一笔写入之后仍然没有空格 ✓ */
   try {
+    __cancelled = false;   // 新一轮收口开始 → 解除上次的"已终止" ✓
     let n = 0;
     const timer = setInterval(() => {
+      if (__cancelled) { try { clearInterval(timer); } catch (e) { /* ignore */ } return; }
       n += 1;
       /* 【审计修 · 关键】回滚只冻结 15 秒 ✗ 而收口要跑 60 秒 ✓
          冻结一过，final-fill / derived 这些来源都不在冻结白名单里 →
@@ -658,7 +669,7 @@ export async function taskFill(text, cfg, signal = null) {
 
 /** ② 记忆提炼：侧路输出 → 逐角色记忆条目 */
 export async function taskMemory(text, cfg, signal = null, msgId = null) {
-  const out = await sideApi.call(memoryPrompt(text, cfg), { task: 'memory', temperature: 0.4, maxTokens: 2000, signal, extras: presetExtras() });
+  const out = await sideApi.call(memoryPrompt(text, cfg), { task: 'memory', temperature: 0.4, maxTokens: 6000, signal, extras: presetExtras() });
   const items = [];
   const re = /<character_memory\s+name\s*=\s*"([^"]+)"\s*>([\s\S]*?)<\/character_memory>/gi;
   let m;
@@ -787,7 +798,7 @@ export async function taskRepairFillBatched(text, cfg, missing, signal = null) {
 }
 export async function taskRepairFill(text, cfg, missing, signal = null) {
   if (isFrozen()) return { applied: 0, rest: String(missing || ""), frozen: true };
-  const out = await sideApi.call(repairPrompt(missing, cleanInput(text)), { task: "fill", temperature: 0.2, maxTokens: 6000, signal });
+  const out = await sideApi.call(repairPrompt(missing, cleanInput(text)), { task: "fill", temperature: 0.2, maxTokens: 18000, signal });
   try { window.__rbqLastRepair = String(out ?? ''); console.log('[RBQ] 补写返回 ' + String(out ?? '').length + ' 字：' + String(out ?? '').slice(0, 160).replace(/\s+/g, ' ')); } catch (e) { /* ignore */ }
   const ops = (() => {
     try { const parsed = protocol.parseAll(out); if (Array.isArray(parsed)) return parsed; if (parsed && parsed.ops) return parsed.ops; return []; } catch (e) { return []; }
@@ -804,7 +815,7 @@ export async function taskSummary(text, cfg, round, signal = null) {
   const th = (() => { try { return summaryStore.getThreshold(); } catch { return 50; } })();
   const built = summaryInput(text, round, th);
   const range = '第 ' + built.from + '-' + built.to + ' 轮（' + built.count + ' 条小总结）';
-  const out = await sideApi.call(summaryPrompt(built.text, cfg, range), { task: 'summary', temperature: 0.3, maxTokens: 1200, signal });
+  const out = await sideApi.call(summaryPrompt(built.text, cfg, range), { task: 'summary', temperature: 0.3, maxTokens: 3600, signal });
   const ops = (() => {
     try {
       const parsed = protocol.parseAll(out);
@@ -820,7 +831,7 @@ export async function taskSummary(text, cfg, round, signal = null) {
 
 /** ④ 附加功能（可选）：只产出文本，写进对应变量供预设引用 */
 export async function taskExtras(text, cfg, signal = null) {
-  const out = await sideApi.call(extrasPrompt(text, cfg), { task: 'extras', temperature: 0.7, maxTokens: 1600, signal });
+  const out = await sideApi.call(extrasPrompt(text, cfg), { task: 'extras', temperature: 0.7, maxTokens: 4800, signal });
   try {
     const mod = await import('./extras.js');
     const aside = (out.match(/<aside[\s\S]*?<\/aside>/gi) ?? []).join('\n');

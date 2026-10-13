@@ -112,7 +112,7 @@ function buildPanel() {
   const header = el('div', { class: 'rbq-header' }, [
     el('span', { class: 'rbq-drag-handle', text: '⠿', title: '按住拖动面板', style: 'cursor:move;opacity:.6;margin-right:6px;user-select:none' }),
     el('div', { class: 'rbq-title', html: '📊 RBQ 数据库 <small class="rbq-sub"></small>' }),
-      el('span', { class: 'rbq-ver-badge', text: 'v2.11.2' }),
+      el('span', { class: 'rbq-ver-badge', text: 'v2.11.5' }),
     el('button', { class: 'rbq-btn rbq-icon', title: '刷新', onclick: () => render() }, '⟳'),
     el('button', { class: 'rbq-btn rbq-icon', title: '收起', onclick: () => hidePanel() }, '✕'),
   ]);
@@ -608,7 +608,7 @@ function renderViewsPane() {
     renderViewport: (key, el2) => renderViewportInto(key, el2),
   };
 
-  import('./views/dashboard.js?v=21120')
+  import('./views/dashboard.js?v=21150')
     .then((m) => m.renderDashboard(host, api))
     .catch((e) => {
       host.textContent = '';
@@ -624,7 +624,7 @@ function renderViewsPane() {
     const panel = el('div', { class: 'rbq-cc-panel' });
     overlay.appendChild(panel);
     pane.appendChild(overlay);
-    import('./views/characterCard.js?v=21120')
+    import('./views/characterCard.js?v=21150')
       .then((m) => m.renderCharacterCard(panel, state.card, {
         el,
         onClose: () => { state.card = null; render(); },
@@ -709,20 +709,20 @@ function __renderViewportInto(key, hostEl) {
     hostEl.textContent = '';
     hostEl.appendChild(el('div', { class: 'rbq-empty', text: `加载失败：${e?.message ?? e}` }));
   };
-  if (key === 'extras') return import('./views/extrasLines.js?v=21120').then((m) => m.renderExtras(hostEl, sub));
-  if (key === 'relations') return import('./views/relations.js?v=21120').then((m) => m.renderRelations(hostEl, sub));
-  if (key === 'map') return import('./views/map.js?v=21120').then((m) => m.renderMap(hostEl, sub));
+  if (key === 'extras') return import('./views/extrasLines.js?v=21150').then((m) => m.renderExtras(hostEl, sub));
+  if (key === 'relations') return import('./views/relations.js?v=21150').then((m) => m.renderRelations(hostEl, sub));
+  if (key === 'map') return import('./views/map.js?v=21150').then((m) => m.renderMap(hostEl, sub));
   if (key === 'inventory' || key === 'equipment') {
-    return import('./views/inventory.js?v=21120').then((m) => (key === 'inventory' ? m.renderInventory(hostEl, sub) : m.renderEquipment(hostEl, sub)));
+    return import('./views/inventory.js?v=21150').then((m) => (key === 'inventory' ? m.renderInventory(hostEl, sub) : m.renderEquipment(hostEl, sub)));
   }
   if (GRAPH_VIEWS.has(key)) {
-    return import('./views/graphs.js?v=21120').then((m) => {
+    return import('./views/graphs.js?v=21150').then((m) => {
       const map = { quests: m.renderQuestBoard, skills: m.renderSkillWheel, monsters: m.renderThreats, factions: m.renderFactionWeb, chronicle: m.renderEraTimeline };
       (map[key] ?? m.renderQuestBoard)(hostEl, sub);
     }).catch(fail);
   }
   if (PANEL_VIEWS.has(key)) {
-    return import('./views/panels.js?v=21120').then((m) => {
+    return import('./views/panels.js?v=21150').then((m) => {
       const hit = m.PANELS.find(([k]) => k === key);
       if (!hit) { hostEl.textContent = ''; hostEl.appendChild(el('div', { class: 'rbq-empty', text: `没有名为 ${key} 的视图` })); return; }
       hit[2](hostEl, sub);
@@ -1979,6 +1979,23 @@ function renderSidePane() {
   card.appendChild(mk('最大并发', 'maxConcurrency', 'number', '90px'));
   card.appendChild(mk('超时(ms)', 'timeoutMs', 'number', '110px'));
   card.appendChild(mk('重试次数', 'retries', 'number', '90px'));
+  /* 【用户问 max_tokens 是什么】这里是【AI 回复的长度上限】，不是发给它的提示词长度 ✓
+     留空 = 用各任务自带值（填表 24000 / 记忆 6000 / 大总结 3600）✓ 填了只会往上抬 ✓ */
+  card.appendChild(mk('输出上限', 'maxTokens', 'number', '110px'));
+  try {
+    const le = sideApi.lastError?.() ?? null;
+    if (le && le.message) {
+      card.appendChild(el('div', {
+        class: 'rbq-hint',
+        style: 'color:#e8a13c',
+        text: '最近一次失败：' + String(le.message).slice(0, 300) + (le.at ? ('　（' + new Date(le.at).toLocaleTimeString() + '）') : ''),
+      }));
+    }
+  } catch (e) { /* ignore */ }
+  card.appendChild(el('div', {
+    class: 'rbq-hint',
+    text: '「输出上限」= AI 这次最多能写多长（输出长度），不是提示词长度 ✓ 留空用默认（填表 24000）。若上面两栏留空走酒馆主 API，长度由酒馆自己的 Response (tokens) 决定 ✓',
+  }));
 
   /* 【用户要求】预设里名字带标记的提示词 → 自动并入侧路提示词 ✓
      标记分位置：🔒↓ 放上面 / 🔒↑ 放下面 ✓ 并且**按它自己的消息归属（系统/用户/AI助手）发出去** ✓ */
@@ -2331,7 +2348,7 @@ function renderSettingsPane() {
         sel.addEventListener('change', () => {
           store.updateConfig({ inputButton: { placement: sel.value } });
           notify('info', '位置已切换，重新注入按钮…');
-          import('./inputButton.js?v=21120').then((m) => { m.stopInputButton(); m.startInputButtonInjection(); });
+          import('./inputButton.js?v=21150').then((m) => { m.stopInputButton(); m.startInputButtonInjection(); });
           render();
         });
         return sel;
