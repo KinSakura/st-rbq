@@ -229,6 +229,32 @@ export function fillPrompt(text, cfg) {
 }
 
 /**
+ * 【关键修正】一条提示词到底"开着还是关着"，不能看它自己身上的 `enabled` ✗
+ *   酒馆把开关存在 **prompt_order** 里（`oai_settings.prompt_order = [{character_id, order:[{identifier, enabled}]}]` ✓
+ *   见 SillyTavern/public/scripts/PromptManager.js 的 getPromptsForCharacter / isPromptDisabledForActiveCharacter ✓）
+ *   而提示词对象自带的 `enabled` 是**导出预设时的快照**，经常会和真实开关不一致 ✗
+ *   → 所以这里：**优先用 prompt_order** ✓，没有对应条目时才退回提示词自带的 enabled ✓
+ * @returns {Map<string,boolean>|null} identifier → 是否启用
+ */
+function promptOrderMap(orderOverride = null) {
+  try {
+    const po = Array.isArray(orderOverride) ? orderOverride : ctx()?.oai_settings?.prompt_order;
+    if (!Array.isArray(po) || !po.length) return null;
+    const c = ctx();
+    const curAvatar = (() => { try { return (c?.characters ?? [])[c?.this_chid]?.avatar ?? null; } catch (e) { return null; } })();
+    /* 优先当前角色那份 → 其次全局（酒馆里全局用的 id 是 100001 / 'global'）→ 再次第一条 ✓ */
+    const pick = (curAvatar && po.find((x) => String(x?.character_id) === String(curAvatar)))
+      ?? po.find((x) => String(x?.character_id) === '100001' || String(x?.character_id) === 'global')
+      ?? po[0];
+    const m = new Map();
+    for (const e of (Array.isArray(pick?.order) ? pick.order : [])) {
+      if (e && e.identifier) m.set(String(e.identifier), e.enabled !== false);
+    }
+    return m.size ? m : null;
+  } catch (e) { return null; }
+}
+
+/**
  * 【用户要求 · 预设位置标记】✓
  *   预设里提示词的**名字**带位置标记时，自动把它的内容拼到侧路提示词的上面/下面：
  *     名字含【🔒↓】 → 放到侧路提示词【上面】（前缀 ✓）
@@ -238,10 +264,11 @@ export function fillPrompt(text, cfg) {
  *       （侧路提示词本体）
  *       （🔒↑ 那些提示词的内容）
  *   基础符号可改（侧路页「预设注入标记」，默认 🔒 ✓）；只写基础符号没带箭头时按"下面"处理 ✓
- * @returns {{above:string, below:string}}
+ *   ⚠️ 开关以 prompt_order 为准 ✓（见 promptOrderMap 的说明 ✓）
+ * @returns {{above:string, below:string, extras:Array}}
  */
-export function presetMarkedBlocks(listOverride = null) {
-  const none = { above: '', below: '' };
+export function presetMarkedBlocks(listOverride = null, orderOverride = null) {
+  const none = { above: '', below: '', extras: [] };
   try {
     if (store.getConfigValue('sideApi.markerEnabled', true) === false) return none;
     const base = String(store.getConfigValue('sideApi.marker', '🔒') || '🔒');
@@ -254,23 +281,38 @@ export function presetMarkedBlocks(listOverride = null) {
       ?? c?.chatCompletionSettings?.prompts
       ?? c?.oai_settings?.prompt_manager?.prompts
       ?? []);
+    const ord = promptOrderMap(orderOverride);
     const above = [];
     const below = [];
+    const seen = [];
     for (const p of (Array.isArray(list) ? list : [])) {
       const name = String(p?.name ?? p?.identifier ?? '');
       if (!name.includes(base)) continue;
-      if (p?.enabled === false) continue;
+      if (p?.marker === true) continue;               // 分隔符类提示词没有真内容 ✓
+      /* 开关：prompt_order 说了算 ✓，它没有这条时才看提示词自己带的 enabled ✓ */
+      const id = String(p?.identifier ?? '');
+      const fromOrder = ord && id ? ord.get(id) : undefined;
+      const on = (fromOrder === undefined) ? (p?.enabled !== false) : fromOrder;
+      if (!on) { seen.push('✗' + name + '（关着）'); continue; }
       const content = String(p?.content ?? '').trim();
       if (!content) continue;
-      if (name.includes(MARK_DOWN)) above.push(content);
-      else below.push(content);      // 含 🔒↑、或只写了 🔒 → 都放下面 ✓
+      /* 【用户要求】不管预设里那条提示词的「消息归属」是什么（系统 / 用户 / AI 助手），
+         一律当【系统】处理 ✓ 并进侧路提示词正文 ✓（不再按身份拆成多条消息 ✗） */
+      if (name.includes(MARK_DOWN)) { above.push(content); seen.push('↑' + name); }
+      else { below.push(content); seen.push('↓' + name); }   // 含 🔒↑、或只写了 🔒 → 都放下面 ✓
+    }
+    if (seen.length) {
+      console.log('[RBQ] 预设标记（开关以 prompt_order 为准）：' + seen.join(' ｜ '));
     }
     if (above.length || below.length) {
-      console.log('[RBQ] 预设标记：上面 ' + above.length + ' 条 / 下面 ' + below.length + ' 条（标记「' + MARK_DOWN + '」「' + MARK_UP + '」）→ 已按位置并入侧路提示词 ✓');
+      console.log('[RBQ] 预设标记：上面 ' + above.length + ' 条 / 下面 ' + below.length + ' 条（标记「' + MARK_DOWN + '」「' + MARK_UP + '」）→ 一律按系统身份并进侧路提示词');
     }
-    return { above: above.join('\n\n'), below: below.join('\n\n') };
+    return { above: above.join('\n\n'), below: below.join('\n\n'), extras: [] };
   } catch (e) { return none; }
 }
+
+/** 兼容旧调用点：现在不再按身份拆消息了，恒返回空数组 ✓ */
+export function presetExtras() { return []; }
 
 /** 把侧路提示词本体按预设标记包起来（上面 + 本体 + 下面 ✓） */
 export function withPresetBlocks(core, listOverride = null) {
@@ -393,7 +435,7 @@ export async function taskMemoryFollowUp(text, cfg, signal = null) {
     const base = memoryPrompt(text, cfg);
     const prompt = base + '\n\n【补写要求】只给下面这些角色写（他们本轮刚登场，还没有记忆）：' + missing.join('、') +
       '\n**必须包含 ' + missing.join('、') + ' 每一个人**，每人一段 <character_memory>。';
-    const out = await sideApi.call(prompt, { task: 'memory', temperature: 0.4, maxTokens: 2400, signal });
+    const out = await sideApi.call(prompt, { task: 'memory', temperature: 0.4, maxTokens: 2400, signal, extras: presetExtras() });
     /* 【修 bug】以前这里写的是 memory.parseMemoryBody(out) ✗ ——
        那个函数返回的是"字段对象"（给单条正文用的 ✓），根本不是条目数组 ✗
        → addMemories 收到对象直接抛 `(items ?? []) is not iterable` ✗
@@ -448,7 +490,7 @@ export async function taskFill(text, cfg, signal = null) {
   try { fixDerivedFields(); } catch (e) { /* ignore */ }
   try { finalFill(); } catch (e) { /* ignore */ }
   await new Promise((r) => setTimeout(r, 800));   // 让 applyOps 落盘，别和新写入打架
-  const out = await sideApi.call(fillPrompt(text, cfg), { task: 'fill', temperature: 0.2, maxTokens: 8000, signal });
+  const out = await sideApi.call(fillPrompt(text, cfg), { task: 'fill', temperature: 0.2, maxTokens: 8000, signal, extras: presetExtras() });
   /* 诊断：真 API 常被 max_tokens / 预设回复长度截断 → 把"返回多长、有没有收尾"打出来 */
   try {
     const __s = String(out ?? '');
@@ -513,7 +555,7 @@ export async function taskFill(text, cfg, signal = null) {
 
 /** ② 记忆提炼：侧路输出 → 逐角色记忆条目 */
 export async function taskMemory(text, cfg, signal = null, msgId = null) {
-  const out = await sideApi.call(memoryPrompt(text, cfg), { task: 'memory', temperature: 0.4, maxTokens: 2000, signal });
+  const out = await sideApi.call(memoryPrompt(text, cfg), { task: 'memory', temperature: 0.4, maxTokens: 2000, signal, extras: presetExtras() });
   const items = [];
   const re = /<character_memory\s+name\s*=\s*"([^"]+)"\s*>([\s\S]*?)<\/character_memory>/gi;
   let m;

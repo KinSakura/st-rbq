@@ -256,8 +256,14 @@ export function hintOf(err) {
 /** 参考 xingv2.6：让模型先"进入填表状态"（预填 assistant 开头） */
 const THOUGHT_PREFILL = '<thought>收到指令，我将一步一步开始思考，并完成填表：先逐张表对照当前数据，看这一轮每张表分别需要新增、更新还是删除，再输出 <data>。</thought>';
 
-export async function call(prompt, { system = '', task = 'fill', temperature = 0.3, maxTokens = 1400, signal = null } = {}) {
-  if (mock) return await mock(prompt, { system, task, temperature, signal });
+export async function call(prompt, { system = '', extras = null, task = 'fill', temperature = 0.3, maxTokens = 1400, signal = null } = {}) {
+  /* 【用户要求】侧路这一发**全部按「系统」身份发** ✓
+       · 预设标记进来的内容（不管预设里设的是系统/用户/AI 助手）→ 系统 ✓
+       · 提示词本体 + 正文 → 也走系统 ✓
+     所以最终就是：一条 system（内容全在里面）+ 一条 assistant（思考预填 ✓） */
+  const exText = Array.isArray(extras) ? extras.map((x) => String(x?.content ?? '')).filter((x) => x.trim()).join('\n\n') : '';
+  const asSystem = [system, exText, prompt].map((x) => String(x ?? '')).filter((x) => x.trim()).join('\n\n');
+  if (mock) return await mock(prompt, { system, task, temperature, signal, extras });
 
   const c = config();
   if (!isConfigured()) {
@@ -265,7 +271,7 @@ export async function call(prompt, { system = '', task = 'fill', temperature = 0
     ignoreNextGenerationEnded += 1;   // 这一发会触发一次 GENERATION_ENDED，先记账
     const g = ctx()?.generateRaw;
     if (typeof g !== 'function') throw new Error('没有可用 API：既没填侧路 URL/Key，酒馆也没配好连接');
-    const full = (system ? system + '\n\n' : '') + prompt + '\n\n' + THOUGHT_PREFILL;
+    const full = asSystem + '\n\n' + THOUGHT_PREFILL;
     const out = await g({ prompt: full, quietToLoud: false });
     return String(out ?? '');
   }
@@ -278,9 +284,8 @@ export async function call(prompt, { system = '', task = 'fill', temperature = 0
       temperature,
       max_tokens: maxTokens,
       messages: [
-        ...(system ? [{ role: 'system', content: system }] : []),
-        { role: 'user', content: prompt },
-      { role: 'assistant', content: THOUGHT_PREFILL },   // 预填思考开头，逼模型进入填表模式（参考 xingv2.6）
+        { role: 'system', content: asSystem },
+        { role: 'assistant', content: THOUGHT_PREFILL },   // 预填思考开头，逼模型进入填表模式（参考 xingv2.6）
       ],
     };
     let ctrl = null;

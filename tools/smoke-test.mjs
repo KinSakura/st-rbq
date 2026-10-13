@@ -408,6 +408,43 @@ await check('预设标记的顺序：同名标记按预设顺序，↑/↓ 交�
   ok(out.indexOf('【本体】') < out.indexOf('B1'), '所有放下面的都在本体之后');
 });
 
+await check('预设标记：开关以 prompt_order 为准（提示词自带的 enabled 可能过时）', async () => {
+  const sp = await import('../core/sidePipeline.js');
+  const list = [
+    { identifier: 'a', name: '🔒↓ 甲', content: 'A', enabled: false },   // 自己写着关 ✗
+    { identifier: 'b', name: '🔒↑ 乙', content: 'B', enabled: false },   // 自己写着关 ✗
+    { identifier: 'c', name: '🔒↓ 丙', content: 'C', enabled: true },    // 自己写着开 ✓
+  ];
+  /* 真实开关：a 开着 ✓ b 关着 ✗ c 关着 ✗ —— 以这里为准 */
+  const order = [{ character_id: '100001', order: [
+    { identifier: 'a', enabled: true },
+    { identifier: 'b', enabled: false },
+    { identifier: 'c', enabled: false },
+  ] }];
+  const r = sp.presetMarkedBlocks(list, order);
+  eq(r.above, 'A', '开着的那条要进来、关着的不要（以 prompt_order 为准）：');
+  eq(r.below, '', '被 prompt_order 判为关的不该进来：');
+  /* 没有任何 order 信息时 → 退回提示词自带的 enabled ✓ */
+  const r2 = sp.presetMarkedBlocks(list, []);
+  eq(r2.above, 'C', '没有 order 信息时退回自带的 enabled：');
+});
+
+await check('预设标记：不管预设写什么归属，一律当系统并进正文', async () => {
+  const sp = await import('../core/sidePipeline.js');
+  const fake = [
+    { name: '没标记的', role: 'system', content: 'X', enabled: true },
+    { name: '🔒↓ 填表口径', role: 'system', content: '【口径】只写事实。', enabled: true },
+    { name: '🔒↓ 你是填表助手', role: 'assistant', content: '我只输出结构化数据。', enabled: true },
+    { name: '🔒↑ 用户习惯', role: 'user', content: '（备注）我喜欢第三人称。', enabled: true },
+    { name: '🔒↑ 收尾提醒', role: 'system', content: '【收尾】闭合标签。', enabled: true },
+  ];
+  const b = sp.presetMarkedBlocks(fake);
+  /* 全部（含 AI 助手 / 用户 身份）都并进正文 ✓ */
+  eq(b.above, '【口径】只写事实。\n\n我只输出结构化数据。', '上面那段应包含所有 ↓ 标记的（不分身份）：');
+  eq(b.below, '（备注）我喜欢第三人称。\n\n【收尾】闭合标签。', '下面那段应包含所有 ↑ 标记的（不分身份）：');
+  eq(sp.presetExtras(fake).length, 0, '不该再按身份拆出单独消息：');
+  ok(!b.above.includes('X'), '没标记的不该被带上：');
+});
 /* ------------------------------------------------------------------ 收尾 */
 
 console.log(`\n──────────────────────────────────────────`);

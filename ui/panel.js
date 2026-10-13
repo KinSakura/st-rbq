@@ -109,7 +109,7 @@ function buildPanel() {
   const header = el('div', { class: 'rbq-header' }, [
     el('span', { class: 'rbq-drag-handle', text: '⠿', title: '按住拖动面板', style: 'cursor:move;opacity:.6;margin-right:6px;user-select:none' }),
     el('div', { class: 'rbq-title', html: '📊 RBQ 数据库 <small class="rbq-sub"></small>' }),
-      el('span', { class: 'rbq-ver-badge', text: 'v2.9.4' }),
+      el('span', { class: 'rbq-ver-badge', text: 'v2.9.7' }),
     el('button', { class: 'rbq-btn rbq-icon', title: '刷新', onclick: () => render() }, '⟳'),
     el('button', { class: 'rbq-btn rbq-icon', title: '收起', onclick: () => hidePanel() }, '✕'),
   ]);
@@ -605,7 +605,7 @@ function renderViewsPane() {
     renderViewport: (key, el2) => renderViewportInto(key, el2),
   };
 
-  import('./views/dashboard.js?v=2940')
+  import('./views/dashboard.js?v=2970')
     .then((m) => m.renderDashboard(host, api))
     .catch((e) => {
       host.textContent = '';
@@ -621,7 +621,7 @@ function renderViewsPane() {
     const panel = el('div', { class: 'rbq-cc-panel' });
     overlay.appendChild(panel);
     pane.appendChild(overlay);
-    import('./views/characterCard.js?v=2940')
+    import('./views/characterCard.js?v=2970')
       .then((m) => m.renderCharacterCard(panel, state.card, {
         el,
         onClose: () => { state.card = null; render(); },
@@ -706,20 +706,20 @@ function __renderViewportInto(key, hostEl) {
     hostEl.textContent = '';
     hostEl.appendChild(el('div', { class: 'rbq-empty', text: `加载失败：${e?.message ?? e}` }));
   };
-  if (key === 'extras') return import('./views/extrasLines.js?v=2940').then((m) => m.renderExtras(hostEl, sub));
-  if (key === 'relations') return import('./views/relations.js?v=2940').then((m) => m.renderRelations(hostEl, sub));
-  if (key === 'map') return import('./views/map.js?v=2940').then((m) => m.renderMap(hostEl, sub));
+  if (key === 'extras') return import('./views/extrasLines.js?v=2970').then((m) => m.renderExtras(hostEl, sub));
+  if (key === 'relations') return import('./views/relations.js?v=2970').then((m) => m.renderRelations(hostEl, sub));
+  if (key === 'map') return import('./views/map.js?v=2970').then((m) => m.renderMap(hostEl, sub));
   if (key === 'inventory' || key === 'equipment') {
-    return import('./views/inventory.js?v=2940').then((m) => (key === 'inventory' ? m.renderInventory(hostEl, sub) : m.renderEquipment(hostEl, sub)));
+    return import('./views/inventory.js?v=2970').then((m) => (key === 'inventory' ? m.renderInventory(hostEl, sub) : m.renderEquipment(hostEl, sub)));
   }
   if (GRAPH_VIEWS.has(key)) {
-    return import('./views/graphs.js?v=2940').then((m) => {
+    return import('./views/graphs.js?v=2970').then((m) => {
       const map = { quests: m.renderQuestBoard, skills: m.renderSkillWheel, monsters: m.renderThreats, factions: m.renderFactionWeb, chronicle: m.renderEraTimeline };
       (map[key] ?? m.renderQuestBoard)(hostEl, sub);
     }).catch(fail);
   }
   if (PANEL_VIEWS.has(key)) {
-    return import('./views/panels.js?v=2940').then((m) => {
+    return import('./views/panels.js?v=2970').then((m) => {
       const hit = m.PANELS.find(([k]) => k === key);
       if (!hit) { hostEl.textContent = ''; hostEl.appendChild(el('div', { class: 'rbq-empty', text: `没有名为 ${key} 的视图` })); return; }
       hit[2](hostEl, sub);
@@ -1944,9 +1944,21 @@ function renderSidePane() {
   card.appendChild(mk('超时(ms)', 'timeoutMs', 'number', '110px'));
   card.appendChild(mk('重试次数', 'retries', 'number', '90px'));
 
-  /* 【用户要求】预设里名字带某个符号表情的提示词 → 自动并入侧路提示词 ✓（符号包住头尾 ✓） */
+  /* 【用户要求】预设里名字带标记的提示词 → 自动并入侧路提示词 ✓
+     标记分位置：🔒↓ 放上面 / 🔒↑ 放下面 ✓ 并且**按它自己的消息归属（系统/用户/AI助手）发出去** ✓ */
   card.appendChild(mk('预设注入标记', 'marker', 'text', '90px'));
-  card.appendChild(el('div', { class: 'rbq-hint', text: '预设里凡是【名字含这个符号】的提示词，都会被自动并进侧路提示词（用它包住头尾）。默认 🔒，格式：' + String.fromCharCode(10) + '🔒' + String.fromCharCode(10) + '内容…' + String.fromCharCode(10) + '🔒' }));
+  card.appendChild(el('div', {
+    class: 'rbq-hint',
+    text: [
+      '预设里【名字带下面这些标记】的提示词，会自动发给侧路 AI：',
+      '　名字写 「🔒↓ …」 → 内容拼到侧路提示词的【上面】',
+      '　名字写 「🔒↑ …」 → 拼到【下面】',
+      '　只写 「🔒 …」   → 当"下面"处理',
+      '　不带 🔒 的提示词 → 侧路完全看不到（只有主 AI 能看到）',
+      '这些内容一律按【系统】身份发出去（预设里把它设成用户或 AI 助手也一样，都会被当成系统 ✓）；侧路提示词本体和正文也走系统。',
+      '默认标记是 🔒（上面那栏可以改）。',
+    ].join(String.fromCharCode(10)),
+  }));
   card.appendChild(el('div', { class: 'rbq-row' }, [
     el('button', { class: 'rbq-btn', text: '测试连接', onclick: async () => { const r = await sideApi.testConnection(); notify(r.ok ? 'success' : 'warning', r.message); } }),
   ]));
@@ -2283,7 +2295,7 @@ function renderSettingsPane() {
         sel.addEventListener('change', () => {
           store.updateConfig({ inputButton: { placement: sel.value } });
           notify('info', '位置已切换，重新注入按钮…');
-          import('./inputButton.js?v=2940').then((m) => { m.stopInputButton(); m.startInputButtonInjection(); });
+          import('./inputButton.js?v=2970').then((m) => { m.stopInputButton(); m.startInputButtonInjection(); });
           render();
         });
         return sel;
