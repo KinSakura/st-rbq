@@ -291,6 +291,16 @@ check('别名下标绝不错位（插列后必须同步别名表）', async () =
   }
 });
 
+check('config() 必须带 source（真机 bug：漏了它导致默认主 API 不生效）', async () => {
+  const em = await import('../core/embed.js');
+  const c = em.config();
+  ok(typeof c.source === 'string' && c.source.length > 0, 'config().source 不能是空/undefined：' + JSON.stringify(c.source));
+  eq(em.sourceDef(c.source).id, c.source, 'sourceDef 必须认得这个 source（否则会静默落到 custom）：');
+  /* source 缺省时必须是 main */
+  const def = em.DEF.source;
+  eq(def, 'main', 'DEF.source 默认必须是 main：' + def);
+});
+
 check('向量来源默认=主 API（不填接口就用主连接的地址）', async () => {
   const em = await import('../core/embed.js');
   const c = em.config();

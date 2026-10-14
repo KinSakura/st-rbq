@@ -160,6 +160,10 @@ export function applyShell(root = null) {
   if (!el || !el.style) return false;
   const c = uiConfig();
   el.setAttribute('data-rbq-fs', String(c.fontSize || 14));
+  /* 【v2.18.0】除了属性，再直接写 inline 字号 —— 真机实测过 data-rbq-fs 规则在、属性也在，
+     但用户点 13/16 就是不变 ✗ → 直接用 inline 兜死，不再依赖变量继承链 ✓ */
+  try { el.style.fontSize = String(Number(c.fontSize) || 14) + 'px'; } catch (e) { /* ignore */ }
+  try { el.style.setProperty('--rbq-fs-base', String(Number(c.fontSize) || 14) + 'px'); } catch (e) { /* ignore */ }
   if (c.pos && Number.isFinite(c.pos.x) && Number.isFinite(c.pos.y)) {
     const vp = viewport();
     const size = c.size && c.size.w > 0 ? c.size : panelSize(el);
@@ -261,8 +265,15 @@ export function bindResize(grip, root) {
     if (!start) return;
     const w = Math.max(320, start.w + (e.clientX - start.x));
     const h = Math.max(240, start.h + (e.clientY - start.y));
-    root.style.width = w + 'px';
-    root.style.height = h + 'px';
+    /* 【v2.19.0】以前只设 style.width/height ✗ 会被样式表里的 width/max-width 压掉 →
+       用户看到的现象就是"◢ 拖不动" ✓ 所以这里用 important 并且清掉 max 限制 ✓ */
+    try {
+      root.style.setProperty('width', w + 'px', 'important');
+      root.style.setProperty('height', h + 'px', 'important');
+      root.style.setProperty('max-width', 'none', 'important');
+      root.style.setProperty('max-height', 'none', 'important');
+      root.setAttribute('data-rbq-sized', '1');
+    } catch (e) { root.style.width = w + 'px'; root.style.height = h + 'px'; }
   };
   const onUp = () => {
     d.removeEventListener('mousemove', onMove);

@@ -311,3 +311,50 @@ export function describeState(messageIndex) {
 }
 
 export { getTables };
+
+/* ══════════════ 【v2.18.1】当前值补齐 + 占位名自检（用户实测发现的问题）══════════════ */
+/*
+ * 实测证据（改版酒馆真机）：
+ *   表14 22 列里有 8 列全空 —— HP(当前)/MP(当前)/SP(当前)/SP(上限)/四维系数/技能池/状态/简要描述
+ *   表6 的「终极宏愿」被写成「未命名1」✗
+ * 修法：
+ *   ① 新行的"当前值"若为空而上限有值 → 当前=上限（刚出场一般满状态 ✓ 确定性 ✓）
+ *   ② 扫出 未命名N/unknown/待定/TBD 这类占位值 → 报出来让人知道要重写 ✗
+ */
+export function fillCurrentFromMax() {
+  let fixed = 0;
+  try {
+    for (const no of [2, 13, 14]) {
+      const cols = (() => { try { return (getTable(no)?.columns ?? []).map((x) => String(x)); } catch (e) { return []; } })();
+      if (!cols.length) continue;
+      const rows = (() => { try { return store.getRows(no, { create: false }) || []; } catch (e) { return []; } })();
+      for (const key of ["HP", "MP", "SP"]) {
+        const iCur = cols.indexOf(key + "(当前)");
+        const iMax = cols.indexOf(key + "(上限)");
+        if (iCur < 0 || iMax < 0) continue;
+        for (const r of rows) {
+          if (!String(r[iCur] || "").trim() && String(r[iMax] || "").trim()) { r[iCur] = r[iMax]; fixed++; }
+        }
+      }
+    }
+    if (fixed) { try { store.commit({ persist: true }); } catch (e) { /* ignore */ } console.log("[RBQ] 已把 " + fixed + " 个空的当前值按上限补齐（新出场默认满状态）"); }
+  } catch (e) { /* ignore */ }
+  return fixed;
+}
+
+export function findPlaceholderNames() {
+  const bad = [];
+  try {
+    for (const no of [0, 1, 2, 6, 13, 14]) {
+      const cols = (() => { try { return (getTable(no)?.columns ?? []).map((x) => String(x)); } catch (e) { return []; } })();
+      const rows = (() => { try { return store.getRows(no, { create: false }) || []; } catch (e) { return []; } })();
+      rows.forEach((r, ri) => {
+        cols.forEach((c, ci) => {
+          const v = String(r[ci] || "").trim();
+          if (/^(未命名\d*|unknown|待定|TBD)$/i.test(v)) bad.push("表" + no + " 第" + (ri + 1) + "行【" + c + "】= " + v);
+        });
+      });
+    }
+  } catch (e) { /* ignore */ }
+  return bad;
+}

@@ -119,5 +119,18 @@
 /* 面板拖动把手与缩放手柄 */
 #rbq-panel .rbq-drag-handle { cursor: move; opacity: .55; user-select: none; padding: 0 4px; }
 #rbq-panel .rbq-drag-handle:hover { opacity: 1; }
-#rbq-panel .rbq-resize-grip { color: var(--rbq-text-mut); user-select: none; }
+#rbq-panel .rbq-resize-grip {
+  color: var(--rbq-text-mut);
+  user-select: none;
+  /* 【v2.18.0】真机实测：手柄在 DOM 里、可见、14x14 ✓ 但 z-index:auto → 被后面的兄弟元素盖住 ✗ */
+  z-index: 60;
+  width: 18px;
+  height: 18px;
+  line-height: 16px;
+  text-align: center;
+  font-size: 13px;
+  opacity: 0.85;
+  cursor: nwse-resize;
+  border-radius: 0 0 6px 0;
+}
 #rbq-panel .rbq-resize-grip:hover { color: var(--rbq-accent); }

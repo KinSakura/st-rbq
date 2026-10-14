@@ -241,6 +241,9 @@ export function isAbortError(err, signal = null) {
 }
 
 export async function withRetry(fn, { retries = 3, backoffMs = 1000, onAttempt = null, signal = null } = {}) {
+  /* 【v2.23.0】被中止 → 顺手把所有侧路任务一起停掉（一次全停 ✓）*/
+  const __watch = () => { try { if (signal && signal.aborted) abortAll("中止信号传播"); } catch (e) { /* ignore */ } };
+  try { if (signal && signal.addEventListener) signal.addEventListener("abort", __watch, { once: true }); } catch (e) { /* ignore */ }
   let last = null;
   for (let i = 0; i <= retries; i++) {
     try {
@@ -250,9 +253,11 @@ export async function withRetry(fn, { retries = 3, backoffMs = 1000, onAttempt =
       last = e;
       try { onAttempt?.(i + 1, e); } catch { /* ignore */ }
       if (i >= retries) break;
-      /* 【v2.16.3】中止即停：不仅看信号，也看错误本身像不像 abort
+      /* 【v2.18.0】中止即停：不仅看信号，也看错误本身像不像 abort
          （抄改版 lib/abort-utils.js 的 isAbortError 思路；边界情况：子请求被中止但外层信号没翻）*/
-      if (signal?.aborted || isAbortError(e, signal)) break;
+      /* 【v2.23.0】中止 → 传播成全停 ✓；其它错误则打全原因（含服务端原话）*/
+      if (signal?.aborted || isAbortError(e, signal)) { abortAll("任务失败且被中止"); break; }
+      try { console.warn("[RBQ] 侧路第 " + (i + 1) + "/" + (retries + 1) + " 次失败：" + String((e && e.message) || e)); } catch (e2) { /* ignore */ }
       const wait = Math.round(backoffMs * Math.pow(2, i) * (0.7 + Math.random() * 0.6));
       await sleep(Math.min(wait, 15000), signal);
     }
@@ -295,6 +300,25 @@ const THOUGHT_PREFILL = '<thought>收到指令，我将一步一步开始思考�
  *   官方酒馆没有这个端点 → 404 也无所谓，全部 best-effort
  */
 let lastGenId = '';
+/*
+ * 【v2.23.0】活跃的侧路控制器集合 —— 为了"点一次终止，所有侧路任务全停" ✓
+ *   用户反馈：现在是"点一个停一个" ✗
+ *   而且任何一处被中止时，我们主动 abortAll() 自我传播 ✓ 不需要改按钮接线 ✓
+ */
+const __activeCtl = new Set();
+let __abortPropagating = false;
+export function activeCount() { return __activeCtl.size; }
+export function abortAll(reason = "用户终止") {
+  if (__abortPropagating) return 0;
+  __abortPropagating = true;
+  let hit = 0;
+  try {
+    for (const c of Array.from(__activeCtl)) { try { c.abort(); hit++; } catch (e) { /* ignore */ } }
+    __activeCtl.clear();
+    console.log("[RBQ] 已终止全部侧路任务（" + reason + "）：停掉 " + hit + " 个在跑的请求");
+  } catch (e) { /* ignore */ } finally { setTimeout(() => { __abortPropagating = false; }, 300); }
+  return hit;
+}
 export function lastGenerationId() { return lastGenId; }
 async function abortServerJob(id) {
   const gid = String(id || "").trim();
@@ -373,6 +397,17 @@ export async function call(prompt, { system = '', extras = null, task = 'fill', 
       temperature,
       max_tokens: useMax,
       stream: c.stream !== false,
+      /* 【v2.23.0 · 适配改版酒馆】带上 luker_generation → 它会走服务端 job + WebSocket 投递 ✓
+         依据：public/scripts/ws-delivery.js 的 PROXY_PATTERNS 含 /api/backends/chat-completions/generate ✓
+               proxiedFetch 读 body.luker_generation.{job_id,request_timeout_ms} 并加 x-luker-request-id ✓
+         为什么能治 524：长生成不再靠一条长 HTTP ✗ 而是 HTTP 立刻返回 job id + WS 分片推送 ✓
+         对官方酒馆无影响 ✓（多出来的字段会被忽略 ✓）*/
+      luker_generation: (() => {
+        try {
+          const jid = (globalThis.crypto && globalThis.crypto.randomUUID) ? globalThis.crypto.randomUUID() : String(Date.now()) + "-" + Math.floor(Math.random() * 1e6);
+          return { job_id: jid, request_timeout_ms: 600000 };
+        } catch (e) { return { request_timeout_ms: 600000 }; }
+      })(),
       messages: [
         { role: 'system', content: asSystem },
         { role: 'assistant', content: THOUGHT_PREFILL },
@@ -420,7 +455,10 @@ export async function call(prompt, { system = '', extras = null, task = 'fill', 
       let detail = '';
       try { detail = await res.text(); } catch (e) { /* ignore */ }
       /* 服务端嫌 max_tokens 太大 → 自动降到 8192 再试一次 ✓（不同服务上限差别很大 ✓） */
-      if (res.status === 400 && /max_?tokens/i.test(String(detail)) && useMax > 4096) {
+      /* 【v2.23.0】不只 400 ✗：429/500/502/503/504/524 也逐级降 max_tokens 再试 ✓
+         （用户现象：填表 maxTokens=24000 失败 4/4 ✗ 而记忆 6000 成功 ✓ 主 API 上限是 32000 ✓）*/
+      const __retryable = (res.status === 400 && /max_?tokens/i.test(String(detail))) || [429, 500, 502, 503, 504, 524].indexOf(Number(res.status)) >= 0;
+      if (__retryable && useMax > 4096) {
         try {
           /* 逐级下探：24000 → 16000 → 8192 → 4096，哪一档服务端接受就用哪一档 ✓ */
           const ladder = [16000, 8192, 4096].filter((x) => x < useMax);
@@ -444,7 +482,7 @@ export async function call(prompt, { system = '', extras = null, task = 'fill', 
       lastErrorSet(msg, { url, status: res.status });
       throw new Error(msg);
     }
-    /* 【v2.16.3】默认走流式：边收边拼 ✓ 不会被网关中途掐断 ✓ */
+    /* 【v2.18.0】默认走流式：边收边拼 ✓ 不会被网关中途掐断 ✓ */
     /* 抓改版的服务端 job id（官方版没有这个头，忽略即可）*/
     try {
       const gid = res.headers && res.headers.get ? res.headers.get("x-luker-generation-id") : "";

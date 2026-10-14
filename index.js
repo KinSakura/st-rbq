@@ -30,7 +30,7 @@ import * as inspiration from './core/inspiration.js';
 import * as sideApi from './core/sideApi.js';
 import { extractProse, extractProseStrict } from './core/prose.js';
 import * as sidePipeline from './core/sidePipeline.js';
-import * as recall from './core/recall.js';   // v2.16.3 预先召回
+import * as recall from './core/recall.js';   // v2.18.0 预先召回
 import { expandUnparsed } from './core/expand.js';
 import * as persona from './core/persona.js';
 import * as progress from './ui/progress.js?v=21230';
@@ -821,11 +821,15 @@ sidePipeline.runForMessage(target, body, { round: sideRound, onProgress, signal:
               const tt = extras.timeBoxText();
               const n = memory.stampRoundTime(sideRound, tt);
               if (n) { store.commit({ persist: true }); console.log('[RBQ] 已给 ' + n + ' 条记忆写上时间框：' + tt); }
-              /* 【v2.16.3 · 第6步】记忆到此才算全部搞定（填表/记忆/附加/大总结并发 → 补跑 → 时间框）
+              /* 【v2.18.0 · 第6步】记忆到此才算全部搞定（填表/记忆/附加/大总结并发 → 补跑 → 时间框）
                  → 现在做【预先召回】并缓存；下一轮主 AI 构提示词时同步读缓存 ✓
                  缓存带 memory.memRev，删楼层/重生成导致记忆回滚时自动失效 ✓（用户硬约束①）*/
               try {
-                Promise.resolve(recall.precomputeAsync ? recall.precomputeAsync({ round: sideRound, msgId: target }) : recall.precompute({ round: sideRound, msgId: target })).then((__rc) => {
+                /* 【v2.23.0】召回加 20 秒硬上限 ✓ 上游不回也不会永远卡住（用户截图：召回一直转没结果 ✗）*/
+                Promise.race([
+                  Promise.resolve(recall.precomputeAsync ? recall.precomputeAsync({ round: sideRound, msgId: target }) : recall.precompute({ round: sideRound, msgId: target })),
+                  new Promise((r) => setTimeout(() => r({ ok: false, reason: "召回超时（20 秒）→ 本轮先用词面兜底", count: 0, mode: "lexical" }), 20000)),
+                ]).then((__rc) => {
                 if (__rc && __rc.ok) {
                   console.log('[RBQ] 预先召回完成：' + __rc.count + ' 条 · ' + String(__rc.text || '').length + ' 字符 · 记忆版本 ' + __rc.rev);
                   try { onProgress && onProgress('召回', 'done', __rc.count + ' 条'); } catch (e) { /* ignore */ }
@@ -844,6 +848,12 @@ sidePipeline.runForMessage(target, body, { round: sideRound, onProgress, signal:
           // 填表自检：缺什么就再补一次（只补缺口）
           // 先补派生字段（年龄），再自检
           try { sidePipeline.fixDerivedFields?.(); } catch (e) { /* ignore */ }
+          /* 【v2.18.0】当前值按上限补齐 + 占位名自检（用户实测表14 三列全空、表6 出现「未命名1」✗）*/
+          try {
+            const __fixed = repair.fillCurrentFromMax ? repair.fillCurrentFromMax() : 0;
+            const __bad = repair.findPlaceholderNames ? repair.findPlaceholderNames() : [];
+            if (__bad.length) { console.warn("[RBQ] 表里还有占位名，请让 AI 重写这些格：\n  " + __bad.slice(0, 8).join("\n  ")); onProgress && onProgress("自检", "done", __bad.length + " 处占位名"); }
+          } catch (e) { console.warn("[RBQ] 补齐/自检出错", e); }
           const __miss0 = (() => { try { return sidePipeline.auditAfterFill?.() || ''; } catch (e) { return ''; } })();
           if (__miss0) { try { console.warn('[RBQ] 这轮填表缺：' + __miss0); } catch (e) { /* ignore */ } }
           const __finish = (m) => {
@@ -878,7 +888,13 @@ sidePipeline.runForMessage(target, body, { round: sideRound, onProgress, signal:
               for (const d of [2500, 6000, 12000]) {
                 setTimeout(() => {
                   try { sidePipeline.finalFill?.(); } catch (e) { /* ignore */ }          // 先收口（补空 + 初始化空表）
-                  try { sidePipeline.fixDerivedFields?.(); } catch (e) { /* ignore */ }  // 再按最新数据重算派生值
+                  try { sidePipeline.fixDerivedFields?.(); } catch (e) { /* ignore */ }
+          /* 【v2.18.0】当前值按上限补齐 + 占位名自检（用户实测表14 三列全空、表6 出现「未命名1」✗）*/
+          try {
+            const __fixed = repair.fillCurrentFromMax ? repair.fillCurrentFromMax() : 0;
+            const __bad = repair.findPlaceholderNames ? repair.findPlaceholderNames() : [];
+            if (__bad.length) { console.warn("[RBQ] 表里还有占位名，请让 AI 重写这些格：\n  " + __bad.slice(0, 8).join("\n  ")); onProgress && onProgress("自检", "done", __bad.length + " 处占位名"); }
+          } catch (e) { console.warn("[RBQ] 补齐/自检出错", e); }  // 再按最新数据重算派生值
                 }, d);
               }
               console.log('[RBQ] 已排三次延迟收口 + 重算（2.5s / 6s / 12s）');

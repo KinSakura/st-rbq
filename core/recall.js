@@ -16,7 +16,7 @@ import { chat, ctx } from './ctx.js';
 import * as memory from './memory.js';
 import * as store from './store.js';
 import { getColumns } from './schema.js';
-import * as embed from './embed.js';   // v2.16.3 可选向量层
+import * as embed from './embed.js';   // v2.18.0 可选向量层
 
 const KEY = 'recallCache';
 
@@ -164,7 +164,18 @@ export async function precomputeAsync(opts = {}) {
     const cfg = embed.config();
     const vs = await embed.queryScores(query, hits, {});
     if (!vs.ok) return Object.assign(base, { mode: "lexical", reason: vs.error || "向量不可用（回退词面）" });
-    const ranked = rankBlended(hits, vs.scores, { threshold: cfg.threshold, topK: cfg.topK, lexWeight: 0.5 });
+    let ranked = rankBlended(hits, vs.scores, { threshold: cfg.threshold, topK: cfg.topK, lexWeight: 0.5 });
+    /* 【v2.23.0】rerank 精排：对已经混排出来的候选再按 query 精排一次 ✓ 失败就保持原序 ✓ */
+    try {
+      if (embed.rerankAvailable && embed.rerankAvailable() && ranked.list.length > 1) {
+        const docs = ranked.list.map((s) => { try { return String(memory.textOf(s.h && s.h.entry) || ''); } catch (e) { return ''; } });
+        const order = await embed.rerank(query, docs, {});
+        if (order && order.length) {
+          ranked = { list: order.map((i) => ranked.list[i]).filter(Boolean), used: ranked.list.length, added: ranked.added };
+          console.log('[RBQ] rerank 精排完成：' + docs.length + ' 条候选已按相关度重排');
+        }
+      }
+    } catch (e) { console.warn('[RBQ] rerank 跳过：' + String((e && e.message) || e)); }
     /* 用混排后的顺序生成文本（复用 memory 的渲染与每人保底配额 ✓）*/
     const picked = [];
     for (const s of ranked.list) { if (s.h && s.h.entry) picked.push({ name: s.h.name, entry: s.h.entry }); }

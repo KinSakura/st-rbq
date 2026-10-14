@@ -306,6 +306,8 @@ export function observeInputButton() {
 }
 
 export function startInputButtonInjection() {
+  /* 【v2.23.0】这里必须有本地的 doc 引用 ✗ 上一版我直接用了 d（另一个函数里的变量）→ 每 500ms 抛 ReferenceError 刷屏 ✗ 且挡在 clearInterval 之前 → 轮询永不停 ✓ */
+  const __doc = doc();
   injectInputButton();
   bindDelegatedOpen();
   observeInputButton();
@@ -314,16 +316,27 @@ export function startInputButtonInjection() {
   pollTimer = setInterval(() => {
     attempts++;
     const ok = injectInputButton();
-    if (ok && attempts > 4) {
+    /* 【v2.23.0】真机 bug：injectInputButton() 在“按钮已存在且位置正确”时会返回 false ✗
+       → 轮询永远清不掉 → 30 秒后误报“注入失败”，而其实按钮早就注入好了 ✓
+       修：只要按钮在 DOM 里就算成功 ✓ */
+    const present = !!(__doc && __doc.getElementById(BTN_ID));
+    if ((ok || present) && attempts > 4) {
       clearInterval(pollTimer);
       pollTimer = null;
+      if (!ok && present) console.log("[RBQ] 输入框按钮已在位（无需重复注入）");
       return;
     }
     if (attempts >= 60) {                 // 30 秒还没找到发送键
       clearInterval(pollTimer);
       pollTimer = null;
-      console.warn('[RBQ] 30 秒内没找到 #send_but，输入框按钮注入失败。请确认酒馆版本。');
-      notify('warning', '没找到发送键，输入框按钮未能注入。');
+      /* 【v2.23.0】只有按钮【真的不在】才报警 ✓ 否则安静收场（避免误报）*/
+      try {
+        if (__doc && __doc.getElementById(BTN_ID)) { console.log("[RBQ] 输入框按钮已在位，停止轮询（不报警）"); }
+        else {
+          console.warn('[RBQ] 30 秒内没找到 #send_but，输入框按钮注入失败。请确认酒馆版本。');
+          notify('warning', '没找到发送键，输入框按钮未能注入。');
+        }
+      } catch (e) { /* ignore */ }
     }
   }, 500);
 }

@@ -14,8 +14,8 @@ import * as sideApi from '../core/sideApi.js';
 import { cellS } from '../core/cells.js';
 import * as schemaMod from '../core/schema.js';
 import * as summary from '../core/summary.js';
-import * as recall from '../core/recall.js';   // v2.16.3 预先召回缓存
-import * as extras from '../core/extras.js';   // v2.16.3：写 bigSummaryText 变量要用
+import * as recall from '../core/recall.js';   // v2.18.0 预先召回缓存
+import * as extras from '../core/extras.js';   // v2.18.0：写 bigSummaryText 变量要用
 import { listAttrs, resolveAttr } from '../core/alias.js';
 import { GLOBAL_DEFAULTS } from '../core/legacyVars.js';
 import { TAG_TABLE } from '../core/protocol.js';
@@ -29,7 +29,7 @@ function store0Cols(no) { try { return (getColumns(no) || []).map((x) => String(
 import { chat, ctx } from '../core/ctx.js';
 
 /**
- * 召回用的"当前上下文"。真实实现（v2.16.3 起）：
+ * 召回用的"当前上下文"。真实实现（v2.18.0 起）：
  *   ① 在场角色名（表0/表2 在场名单 ✓ 走 extras.presentNames ✓ 拿不到时读表0 第一行）
  *   ② 当前焦点（表6「即时焦点」✓ 按列名取 ✓）
  *   ③ 最近几条消息的尾部（限额 800 字 ✓ 原有行为）
@@ -513,7 +513,7 @@ function buildTableDataPlain({ onlyNonEmpty = true, maxRowsPerTable = 200 } = {}
   if (!out.length) return '（暂无表格数据）';
   // 长期记忆：与表格分开（表格装现状、记忆装历史），按相关度只注入最相关的一小段
   try {
-    /* 【v2.16.3】优先用【预先召回】的缓存（上一轮结束时算好的 ✓ 含在场/焦点 ✓）
+    /* 【v2.18.0】优先用【预先召回】的缓存（上一轮结束时算好的 ✓ 含在场/焦点 ✓）
      拿不到缓存（比如刚打开聊天/缓存失效）→ recallTextFor 内部会当场同步算一次词面召回 ✓ 不会空手 */
   const mem = (() => {
     try {
@@ -696,7 +696,7 @@ export function buildTableDataXml({ for: who = 'main' } = {}) {
     out.push("</states>");
   }
 
-  /* 【v2.16.3】大总结做成变量给主 AI 用（预设里可写 {{getglobalvar::bigSummaryText}}）*/
+  /* 【v2.18.0】大总结做成变量给主 AI 用（预设里可写 {{getglobalvar::bigSummaryText}}）*/
   try {
     const __dg = summary.digestText ? summary.digestText({ limit: (() => {
   try { const v = Number(SillyTavern.getContext()?.variables?.global?.get?.('memoryRecallBigSummaryMax')); return Number.isFinite(v) && v > 0 ? v : 0; } catch (e) { return 0; }

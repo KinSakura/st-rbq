@@ -15,16 +15,55 @@ import { chat, ctx } from './ctx.js';
 import * as memory from './memory.js';
 import * as store from './store.js';
 
-export const DEF = { url: '', key: '', model: '', dimensions: 0, threshold: 0.35, topK: 20, via: 'server', source: 'main' };
+export const DEF = { url: '', key: '', model: '', dimensions: 0, threshold: 0.35, topK: 20, via: 'server', source: 'main',
+  /* 【v2.23.0】rerank 重排：对粗筛出来的候选再精排一次（照改版 connection-manager 的做法 ✓）*/
+  rerankEnabled: true, rerankModel: 'BAAI/bge-reranker-v2-m3' };
+/** rerank 用的地址：从向量地址派生（去掉 /embeddings 换成 /rerank ✓ 与改版一致）*/
+export function rerankUrl(id, url) {
+  const base = effectiveUrl(id, url).replace(/\/+$/, "").replace(/\/embeddings$/i, "");
+  return base ? (base + "/rerank") : "";
+}
+/** rerank 是否可用（要有地址；Key 按来源 ✓ 本地自建可以没有 ✓）*/
+export function rerankAvailable() {
+  const c = config();
+  if (!c.rerankEnabled) return false;
+  if (!effectiveUrl(c.source, c.url)) return false;
+  const def = sourceDef(c.source);
+  if (def.needsKey && !effectiveKey(c.source, c.key)) return false;
+  return true;
+}
+/**
+ * 精排：把候选文档按与 query 的相关度重新排序（best-effort ✓ 失败就返回 null → 调用方保持原序 ✓）
+ * @returns {Promise<number[]|null>} 返回【按新顺序排列的原下标】
+ */
+export async function rerank(query, docs, { signal = null } = {}) {
+  try {
+    if (!rerankAvailable()) return null;
+    const c = config();
+    const list = (Array.isArray(docs) ? docs : []).map((d) => String(d ?? ""));
+    if (!list.length) return null;
+    const url = rerankUrl(c.source, c.url);
+    const headers = headersFor("direct", effectiveKey(c.source, c.key));
+    /* 【v2.23.0】rerank 也 15 秒超时 ✓ */
+    const res = await fetchWithTimeout(url, { method: "POST", headers, body: JSON.stringify({ model: c.rerankModel, query: String(query || ""), documents: list, top_n: list.length }) }, 15000);
+    const txt = await res.text();
+    if (!res.ok) { console.warn("[RBQ] rerank 失败 HTTP " + res.status + "：" + txt.slice(0, 120)); return null; }
+    let j = null; try { j = JSON.parse(txt); } catch (e) { console.warn("[RBQ] rerank 返回不是 JSON"); return null; }
+    const arr = Array.isArray(j && j.results) ? j.results : (Array.isArray(j && j.data) ? j.data : []);
+    if (!arr.length) return null;
+    const idx = arr.map((r) => Number(r && (r.index ?? r.document_index))).filter((x) => Number.isFinite(x) && x >= 0 && x < list.length);
+    return idx.length === list.length ? idx : null;
+  } catch (e) { console.warn("[RBQ] rerank 出错（已跳过）：" + String((e && e.message) || e)); return null; }
+}
 
 /*
- * 【v2.16.3 · 借鉴用户改版 connection-manager 的 EMBEDDING_SOURCE_DEFS】
+ * 【v2.18.0 · 借鉴用户改版 connection-manager 的 EMBEDDING_SOURCE_DEFS】
  *   关键启发：不是所有向量接口都要 Key ✗ —— 本地/自建（Ollama / llama.cpp / vLLM）根本不用 Key ✓
  *   所以 available() 改成：只要有【地址或内置默认地址】+【模型】即可；Key 按需 ✓
  *   needsUrl=false 的来源会用它自带的默认地址 ✓
  */
 /*
- * 【v2.16.3】读"主 API"的连接信息（真值：SillyTavern.getContext().chatCompletionSettings = oai_settings）
+ * 【v2.18.0】读"主 API"的连接信息（真值：SillyTavern.getContext().chatCompletionSettings = oai_settings）
  *   返回 { source, url, key, model }；拿不到就返回空串 ✓ 绝不抛
  */
 export function mainApi() {
@@ -77,6 +116,9 @@ export function config() {
     threshold: (() => { const t = Number(g("threshold", DEF.threshold)); return Number.isFinite(t) ? t : DEF.threshold; })(),
     topK: Number(g("topK", DEF.topK)) || DEF.topK,
     via: String(g("via", DEF.via) || DEF.via) === "direct" ? "direct" : "server",
+    /* 【v2.18.0 · 真机抓到的 bug】以前这里漏了 source ✗ → sourceDef(undefined) 落到 SOURCES[0]=custom
+       → 默认的"主 API"永远不生效 ✗（改版酒馆实测：主连接地址明明读到了却报"还没填接口地址"）*/
+    source: String(g("source", DEF.source) || DEF.source),
   };
 }
 export function setConfig(patchObj = {}) {
@@ -86,12 +128,19 @@ export function setConfig(patchObj = {}) {
   } catch (e) { return config(); }
 }
 /** 能不能用（没 key / 没 url / 没 model → 一律不用）*/
-/* 【v2.16.3】不再强制要 Key：本地/自建（Ollama/llama.cpp/vLLM）可以没有 Key ✓ */
+/* 【v2.18.0】不再强制要 Key：本地/自建（Ollama/llama.cpp/vLLM）可以没有 Key ✓ */
+/** 【v2.18.0】来源=主 API 时的"该用哪个向量模型"：用户没填就用主连接的模型（用户要求 ✓）*/
+export function effectiveModel(id, model) {
+  const m = String(model || "").trim();
+  if (m) return m;
+  if (String(id) === "main") { try { return String(mainApi().model || "").trim(); } catch (e) { return ""; } }
+  return "";
+}
 export function available() {
   const c = config();
   const def = sourceDef(c.source);
   const url = effectiveUrl(c.source, c.url);
-  if (def.needsModel && !c.model) return false;
+  if (def.needsModel && !effectiveModel(c.source, c.model)) return false;
   if (def.needsUrl && !url) return false;
   if (def.needsKey && !c.key) return false;
   return Boolean(url || c.model);
@@ -161,6 +210,15 @@ function headersFor(via, key) {
   return { "Content-Type": "application/json" };
 }
 /** 取一批文本的向量；返回 { ok, vectors, dim, error }（绝不抛）*/
+/** 【v2.23.0】带超时的 fetch（上游不回就不会永远挂着 ✗）*/
+async function fetchWithTimeout(url, opts = {}, ms = 15000) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => { try { ctl.abort(); } catch (e) { /* ignore */ } }, Math.max(1000, Number(ms) || 15000));
+  try {
+    const res = await fetch(url, Object.assign({}, opts, { signal: ctl.signal }));
+    return res;
+  } finally { clearTimeout(timer); }
+}
 export async function embedTexts(texts, { signal = null } = {}) {
   const c = config();
   const out = { ok: false, vectors: [], dim: 0, error: "" };
@@ -170,11 +228,13 @@ export async function embedTexts(texts, { signal = null } = {}) {
   const base = effectiveUrl(c.source, c.url).replace(/\/+$/, "");
   const url = c.via === "direct" ? (base + "/embeddings") : "/api/backends/chat-completions/generate";
   const useKey = effectiveKey(c.source, c.key);
+  const useModel = effectiveModel(c.source, c.model);
   const body = c.via === "direct"
-    ? { model: c.model, input: list, ...(c.dimensions > 0 ? { dimensions: c.dimensions } : {}) }
-    : { chat_completion_source: "openai", reverse_proxy: base, proxy_password: useKey, model: c.model, input: list, embeddings: true };
+    ? { model: useModel, input: list, ...(c.dimensions > 0 ? { dimensions: c.dimensions } : {}) }
+    : { chat_completion_source: "openai", reverse_proxy: base, proxy_password: useKey, model: useModel, input: list, embeddings: true };
   try {
-    const res = await fetch(url, { method: "POST", headers: headersFor(c.via, useKey), body: JSON.stringify(body), signal });
+    /* 【v2.23.0】15 秒超时 ✓ 超时=失败 → 调用方自动回退词面 ✓ */
+    const res = await fetchWithTimeout(url, { method: "POST", headers: headersFor(c.via, useKey), body: JSON.stringify(body) }, 15000);
     const txt = await res.text();
     if (!res.ok) { out.error = "HTTP " + res.status + "：" + txt.slice(0, 160); return out; }
     let j = null; try { j = JSON.parse(txt); } catch (e) { out.error = "返回不是 JSON：" + txt.slice(0, 120); return out; }
@@ -227,7 +287,7 @@ export async function selfCheck() {
   const effUrl = effectiveUrl(c.source, c.url);
   if (!effUrl) return { ok: false, step: "接口地址", message: "还没填接口地址（要填到 …/v1 为止）" };
   if (def.needsKey && !c.key) return { ok: false, step: "Key", message: "这个来源需要 Key，但还没填" };
-  if (def.needsModel && !c.model) return { ok: false, step: "模型", message: "还没填模型名" };
+  if (def.needsModel && !effectiveModel(c.source, c.model)) return { ok: false, step: "模型", message: "还没填模型名（来源=主 API 时留空会直接用主连接的模型）" };
   const r = await embedTexts(["连接自检"]);
   const hint = (!def.needsKey && !effectiveKey(c.source, c.key) && /https?:\/\//i.test(effUrl) && !/(127\.0\.0\.1|localhost|0\.0\.0\.0)/i.test(effUrl))
     ? "（主 API 是云端来源：embeddings 通常需要一个 Key，贴一次即可；本地/自建接口不需要 Key）"

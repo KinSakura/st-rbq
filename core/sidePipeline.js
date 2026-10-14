@@ -177,6 +177,10 @@ const MUST_WRITE_HEAD = [
   "11a. 四维系数、技能池、装备位这类格式/结构类列，实在判断不出来才用 1.0|1.0|1.0|1.0 / [] / 无。",
   "12a. **「系统轮次」这一格由脚本自动填**（不是你的活），你不用写它，写错了脚本也会覆盖。",
   "12b. **无名配角 / 龙套 / 只有称呼没有名字的（如「守卫」「文书」「路人」「伙计」）一律写进表14（怪物与临时实体）**，不要进表2 / 表3 / 表5。",
+
+  "12c. **表14 新建行必须写全 HP/MP/SP 的【当前】与【上限】**（刚出场按满状态：当前=上限），并把四维系数(STR|CON|DEX|INT)、技能池、状态、简要描述一起写上 —— 实测这几列最容易空 ✗。",
+
+  "12d. **禁止任何占位名**：不要写「未命名」「未命名1」「unknown」「待定」；表6 的「终极宏愿」等也必须写真内容（实测出现过「未命名1」✗）。",
   "     表2 / 表3 / 表5 只放【有名字、有身份、会反复出现】的正式角色 —— 要么把他的完整设定写齐，要么就别记。",
   "12c. **绝对不要写占位符实体**（npc / npc_var / 路人甲 / 未知 / 无）：表5 的关系双方必须都是有名字的实体；",
   "     已经在表2 建过档的角色，也不要再往表14 里写一份（脚本会自动删掉这种重复）。",
@@ -250,7 +254,7 @@ export function fillPrompt(rawText, cfg) {
   const guide = (() => {
     try {
       const guide = guideForExtractor(prompts.buildTablePromptGuide?.() ?? '');
-      /* 【v2.16.3】按轮次节奏：只把本轮该写的表放进提示词（表12 一直排除）
+      /* 【v2.18.0】按轮次节奏：只把本轮该写的表放进提示词（表12 一直排除）
          节奏来自 activeTables()，灵感见改版 Luker 的 extraction-schedule */
       const __active = activeTables(cfg && cfg.round, (cfg && cfg.cadence) || null);
       const __allNo = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14];
@@ -596,7 +600,7 @@ export async function taskMemoryFollowUp(text, cfg, signal = null) {
       }
       return [...set];
     })();
-    /* 【v2.16.3】先把"本轮已成功写过记忆的人"排除掉 ✓ 再按库里的记录判重 ✓ */
+    /* 【v2.18.0】先把"本轮已成功写过记忆的人"排除掉 ✓ 再按库里的记录判重 ✓ */
     const already = want.filter((n) => memWrittenThisRound.has(String(n).trim()));
     if (already.length) console.log("[RBQ] 记忆补跑：这几个人本轮已经写过记忆，跳过 -> " + already.join("、"));
     const missing = want.filter((n) => {
@@ -673,6 +677,8 @@ export function cancelPending() {
 export function resumeAfterCancel() { __cancelled = false; }
 
 export async function taskFill(text, cfg, signal = null) {
+  /* 【v2.23.0】进门先看是否已被终止 ✓ 终止后不再发起新的侧路请求 */
+  try { if (isAbortRequested()) { console.log("[RBQ] 已被终止 → 跳过填表任务"); return; } } catch (e) { /* ignore */ }
   if (isFrozen()) { console.log("[RBQ] 冻结期内，跳过本轮填表"); return { applied: 0, ops: 0, frozen: true }; }
   // 自愈：开头先把上一轮漏下的兜底补上（收尾时机不对时会有残留，这里兜住）
   try { fixDerivedFields(); } catch (e) { /* ignore */ }
@@ -750,6 +756,7 @@ export async function taskFill(text, cfg, signal = null) {
 
 /** ② 记忆提炼：侧路输出 → 逐角色记忆条目 */
 export async function taskMemory(text, cfg, signal = null, msgId = null) {
+  try { if (isAbortRequested()) { console.log("[RBQ] 已被终止 → 跳过记忆任务"); return; } } catch (e) { /* ignore */ }
   const out = await sideApi.call(memoryPrompt(text, cfg), { task: 'memory', temperature: 0.4, maxTokens: 6000, signal, extras: presetExtras() });
   const items = [];
   const re = /<character_memory\s+name\s*=\s*"([^"]+)"\s*>([\s\S]*?)<\/character_memory>/gi;
@@ -1388,6 +1395,7 @@ export function fixDerivedFields() {
 
   /* 兜底默认值（脚本保证这几列永不空；老模板本身就规定了默认写法）：
        四维系数 → 1.0|1.0|1.0|1.0（基准倍率）、技能池 → []（无技能）、
+       【v2.19.0】这张表也要兜底：表14（龙套/怪物）同样有 四维系数 与 技能池 ✓ 以前只兜了 2/3/13 ✗
        绝对雷区/核心偏好/深层软肋/特殊体征 → 未探明 */
   try {
     const DEFAULT_COL = {
@@ -1495,7 +1503,8 @@ export function auditAfterFill({ maxItems = 40 } = {}) {
   try {
     const rowsOf = (no) => { try { return store.getRows(no, { create: false }) ?? []; } catch (e) { return []; } };
     const colsOf = (no) => { try { return (schema.getTable(no)?.columns ?? []).map((c) => String(c)); } catch (e) { return []; } };
-    const isPlaceholder = (s) => /^\{\{.*\}\}$/.test(s) || s === "你" || s === "我";
+    /* 【v2.19.0】占位名也算"缺" ✓ 这样表6 的「未命名1」会被上报 → 自动进修复轮 ✓ */
+    const isPlaceholder = (s) => /^\{\{.*\}\}$/.test(s) || s === "你" || s === "我" || /^(未命名\d*|unknown|待定|TBD)$/i.test(String(s || "").trim());
     /* 在场名单（表0） */
     let present = [];
     try {
@@ -1515,7 +1524,9 @@ export function auditAfterFill({ maxItems = 40 } = {}) {
       cols.forEach((c, ci) => { if (!String(r[ci] ?? "").trim()) miss.push(tname + " 的「" + c + "」为空"); });
     }
     /* 逐角色表：每个在场角色都要有行，且每个"该写的列"都不能空 */
-    const PER_CHAR = [2, 3, 4, 13];
+    /* 【v2.19.0 根治】表14（怪物与临时实体/龙套）以前不在审计里 ✗
+       → 它的空格永远不上报 → 修复轮也就不会补 → 用户看到的"表14 八列全空"会一直存在 ✓ */
+    const PER_CHAR = [2, 3, 4, 13, 14];
     const SKIP_COL = /(临时修正|更新时间戳|碰撞体积|MP消耗|SP消耗|冷却|基础伤害|护甲值|范围|成长)/;
     for (const no of PER_CHAR) {
       const cols = colsOf(no);

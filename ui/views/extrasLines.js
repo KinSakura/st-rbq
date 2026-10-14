@@ -86,7 +86,15 @@ export function renderZilla(host) { shell(host, '小剧场', '侧路 API 按楼�
  * 面板的「附加」视图调用它。
  */
 export function renderExtras(host, sub) {
+  /* 【v2.18.0】开着开关的 + 楼里确实有数据的 = 要渲染的种类（并集 ✓）
+     以前只看开关 ✗ 判断不出来就显示空 → "生成了却看不到" ✓ */
   const on = enabledKinds(sub);
+  const hasData = [];
+  try { if (collect("aside").length) hasData.push("narration"); } catch (e) { /* ignore */ }
+  try { if (collect("cg").length) hasData.push("cg"); } catch (e) { /* ignore */ }
+  try { if (collect("zilla").length) hasData.push("theater"); } catch (e) { /* ignore */ }
+  for (const k of hasData) { if (on.indexOf(k) < 0) on.push(k); }
+  try { console.log("[RBQ] 附加视图：开关=" + JSON.stringify(enabledKinds(sub)) + " 有数据的=" + JSON.stringify(hasData) + " → 渲染=" + JSON.stringify(on)); } catch (e) { /* ignore */ }
   if (!on.length) {
     const box = document.createElement("div");
     box.className = "rbq-empty";
@@ -94,14 +102,18 @@ export function renderExtras(host, sub) {
     host.appendChild(box);
     return;
   }
-  if (on.indexOf("narration") >= 0) renderAside(host);
-  if (on.indexOf("cg") >= 0) renderCg(host);
-  if (on.indexOf("theater") >= 0) renderZilla(host);
+  /* 【v2.18.0】每种各给一个独立容器 ✓ 否则三个渲染器都会 host.textContent="" → 互相擦掉，
+     真机实测只剩最后一个（小剧场）能看见 ✓ */
+  const section = (fn) => { const box = document.createElement("div"); host.appendChild(box); try { fn(box); } catch (e) { console.warn("[RBQ] 附加分区渲染失败：", e); } };
+  if (on.indexOf("narration") >= 0) section(renderAside);
+  if (on.indexOf("cg") >= 0) section(renderCg);
+  if (on.indexOf("theater") >= 0) section(renderZilla);
 }
 
 /** 已开启的附加种类：兼容 extras.get(k).enabled / extras.isEnabled(k) / 聊天变量三种形状 */
 function enabledKinds(sub) {
   const KEYS = ["narration", "cg", "theater"];
+  /* 三种开关形状都试：sub.extras.isEnabled / sub.extras.get / 聊天变量 */
   const out = [];
   for (const k of KEYS) {
     let on = false;

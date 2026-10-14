@@ -13,7 +13,7 @@ import * as zoomPan from './zoomPan.js';
 import { cellS as C } from '../core/cells.js';
 import { getTables, getTable, resolveColumn } from '../core/schema.js';
 import * as store from '../core/store.js';
-import * as embedApi from '../core/embed.js';   // v2.16.3 向量召回设置卡
+import * as embedApi from '../core/embed.js';   // v2.18.0 向量召回设置卡
 import * as memory from '../core/memory.js';
 import * as sideApi from '../core/sideApi.js';
 import * as sidePipeline from '../core/sidePipeline.js';
@@ -113,7 +113,7 @@ function buildPanel() {
   const header = el('div', { class: 'rbq-header' }, [
     el('span', { class: 'rbq-drag-handle', text: '⠿', title: '按住拖动面板', style: 'cursor:move;opacity:.6;margin-right:6px;user-select:none' }),
     el('div', { class: 'rbq-title', html: '📊 RBQ 数据库 <small class="rbq-sub"></small>' }),
-      el('span', { class: 'rbq-ver-badge', text: 'v2.16.3' }),
+      el('span', { class: 'rbq-ver-badge', text: 'v2.23.0' }),
     el('button', { class: 'rbq-btn rbq-icon', title: '刷新', onclick: () => render() }, '⟳'),
     el('button', { class: 'rbq-btn rbq-icon', title: '收起', onclick: () => hidePanel() }, '✕'),
   ]);
@@ -179,7 +179,7 @@ function buildPanel() {
   panelEl = p;
   try { shell.bindAutoFit(); } catch { /* ignore */ }
   try {
-    const grip = el('div', { class: 'rbq-resize-grip', title: '拖动缩放面板', style: 'position:absolute;right:2px;bottom:2px;width:14px;height:14px;cursor:nwse-resize;opacity:.5' });
+    const grip = el('div', { class: 'rbq-resize-grip', title: '拖动缩放面板', style: 'position:absolute;right:2px;bottom:2px;width:18px;height:18px;cursor:nwse-resize;opacity:.5' });
     grip.textContent = '◢';
     p.appendChild(grip);
     shell.bindResize(grip, p);
@@ -348,7 +348,6 @@ export function showPanel() {
 
   try { ensureUpdateBanner(); } catch { /* ignore */ }
   try { attachMemoryRecallCard(); } catch { /* ignore */ }
-try { attachEmbedCard(); } catch { /* ignore */ }
   try { attachEmbedCard(); } catch { /* ignore */ }
   try { ensurePresetBanner(); } catch { /* ignore */ }
 }
@@ -394,7 +393,7 @@ try { attachEmbedCard(); } catch { /* ignore */ }
       const dragH = q('#rbq-panel .rbq-drag-handle');
       if (dragH) shell.bindDrag(dragH, shellEl);
       if (!q('#rbq-panel .rbq-resize-grip')) {
-        const grip = el('div', { class: 'rbq-resize-grip', title: '拖动缩放面板', style: 'position:absolute;right:2px;bottom:2px;width:14px;height:14px;cursor:nwse-resize;opacity:.5' });
+        const grip = el('div', { class: 'rbq-resize-grip', title: '拖动缩放面板', style: 'position:absolute;right:2px;bottom:2px;width:18px;height:18px;cursor:nwse-resize;opacity:.5' });
         grip.textContent = '◢';
         shellEl.appendChild(grip);
         shell.bindResize(grip, shellEl);
@@ -476,7 +475,7 @@ try { attachEmbedCard(); } catch { /* ignore */ }
   else if (state.tab === 'outline') renderOutlinePane();
   else if (state.tab === 'side') renderSidePane();
   else if (state.tab === 'rounds') renderRoundsPane();
-  else if (state.tab === 'memory') { renderMemoryPane(); attachMemoryCapCard(); }
+  else if (state.tab === 'memory') { renderMemoryPane(); attachMemoryCapCard(); try { attachEmbedCard(); } catch (e) { console.warn('[RBQ] 向量卡挂载失败：', e); } }
   else if (state.tab === 'vars') renderVarsPane();
   else if (state.tab === 'extras') { EXTRAS_FILTER = ['narration', 'cg', 'theater']; renderExtrasPane('extras'); EXTRAS_FILTER = null; }
   else if (state.tab === 'workshop') renderWorkshopPane();
@@ -506,7 +505,7 @@ try { attachEmbedCard(); } catch { /* ignore */ } }
     const dragH = q('#rbq-panel .rbq-drag-handle');
     if (dragH && shellEl) shell.bindDrag(dragH, shellEl);
     if (shellEl && !q('#rbq-panel .rbq-resize-grip')) {
-      const grip = el('div', { class: 'rbq-resize-grip', title: '拖动缩放面板', style: 'position:absolute;right:2px;bottom:2px;width:14px;height:14px;cursor:nwse-resize;opacity:.5' });
+      const grip = el('div', { class: 'rbq-resize-grip', title: '拖动缩放面板', style: 'position:absolute;right:2px;bottom:2px;width:18px;height:18px;cursor:nwse-resize;opacity:.5' });
       grip.textContent = '◢';
       shellEl.appendChild(grip);
       shell.bindResize(grip, shellEl);
@@ -1737,6 +1736,52 @@ function renderRoundsPane() {
 
 /* ------------------------------------------------------------ 记忆与召回页 */
 
+/* 【v2.18.0】记忆页：把向量召回设置直接建在页里（以前靠事后插入 ✗ 在改版上始终不生效 ✓）*/
+function buildEmbedCard() {
+  const g = (k, d) => { try { const v = store.getConfigValue('embed.' + k, undefined); return (v === undefined || v === null || v === '') ? d : v; } catch (e) { return d; } };
+  const setK = (k, v, label) => { try { store.setConfigValue('embed.' + k, v); notify('success', label + ' 已保存'); } catch (e) { /* ignore */ } };
+  const txt = (label, k, ph) => {
+    const i = el('input', { class: 'rbq-input', type: 'text', value: String(g(k, '')), placeholder: ph || '', style: 'flex:1;min-width:180px' });
+    i.addEventListener('change', () => setK(k, String(i.value || '').trim(), label));
+    return el('div', { class: 'rbq-row' }, [el('span', { class: 'rbq-hint', text: label, style: 'min-width:110px' }), i]);
+  };
+  const num = (label, k, def) => {
+    const i = el('input', { class: 'rbq-input', type: 'number', step: '0.05', value: String(g(k, def)), style: 'width:90px' });
+    i.addEventListener('change', () => setK(k, Number(i.value), label));
+    return el('div', { class: 'rbq-row' }, [el('span', { class: 'rbq-hint', text: label, style: 'min-width:110px' }), i]);
+  };
+  const sel = el('select', { class: 'rbq-select', style: 'flex:1' });
+  for (const s of (embedApi.SOURCES || [])) { const o = el('option', { value: s.id, text: s.label }); sel.appendChild(o); }
+  sel.value = String(g('source', 'main'));
+  const info = el('div', { class: 'rbq-hint', text: '' });
+  const refresh = () => {
+    try {
+      const cov = embedApi.coverage();
+      const idx = embedApi.indexInfo();
+      info.textContent = '覆盖率：已向量化 ' + cov.done + ' / 总 ' + cov.total + ' 条（' + cov.percent + '%）· 索引模型：' + (idx.model || '（空）') + ' · 维度：' + (idx.dim || '—') + (embedApi.available() ? ' · 当前：向量 + 词面混排' : ' · 当前：词面召回（没配向量就是它 ✓）');
+    } catch (e) { info.textContent = '读不到覆盖率：' + String((e && e.message) || e); }
+  };
+  sel.addEventListener('change', () => { setK('source', sel.value, '来源'); refresh(); });
+  const mkBtn = (label, fn) => { const b = el('button', { class: 'rbq-btn', text: label }); b.addEventListener('click', () => { try { fn(b); } catch (e) { notify('error', String((e && e.message) || e)); } }); return b; };
+  const card = el('div', { class: 'rbq-card', 'data-rbq-embed': '1' }, [
+    el('h4', { text: '向量召回（可选 · 不填就用主 API）' }),
+    el('div', { class: 'rbq-hint', text: '默认来源是「主 API」：地址与 Key 都自动用主连接；本地/自建（Ollama 等）不需要 Key。填好模型后点「连接自检」，通过再点「重建索引」。没配 / 失败 / 超时都会自动回退词面，不会卡。' }),
+    el('div', { class: 'rbq-row' }, [el('span', { class: 'rbq-hint', text: '来源', style: 'min-width:110px' }), sel]),
+    txt('接口地址', 'url', '留空 = 用主 API 的地址'),
+    txt('API Key', 'key', '留空 = 用主 API 的 Key（本地来源不用填）'),
+    txt('向量模型', 'model', '如 text-embedding-3-small / BAAI/bge-m3'),
+    el('div', { class: 'rbq-row' }, [num('维度(0=原生)', 'dimensions', 0), num('相似度阈值', 'threshold', 0.35), num('最多取几条', 'topK', 20)]),
+    info,
+    el('div', { class: 'rbq-row' }, [
+      mkBtn('连接自检', async (b) => { b.disabled = true; const o = b.textContent; b.textContent = '自检中…'; try { const r = await embedApi.selfCheck(); notify(r.ok ? 'success' : 'error', (r.ok ? '自检通过：' : '自检失败[' + r.step + ']：') + r.message); } finally { b.disabled = false; b.textContent = o; refresh(); } }),
+      mkBtn('重建索引', async (b) => { b.disabled = true; const o = b.textContent; try { const r = await embedApi.rebuild({ onProgress: (d, tt) => { b.textContent = '重建中 ' + d + '/' + tt; } }); notify(r.ok ? 'success' : 'error', r.ok ? ('重建完成：' + r.done + ' 条，维度 ' + r.dim) : ('重建失败：' + (r.error || '未知'))); } finally { b.disabled = false; b.textContent = o; refresh(); } }),
+      mkBtn('清空索引', () => { embedApi.clearIndex(); notify('success', '索引已清空'); refresh(); }),
+    ]),
+  ]);
+  try { refresh(); } catch (e) { /* ignore */ }
+  return card;
+}
+
 function renderMemoryPane() {
   const pane = q('.rbq-pane[data-pane="memory"]');
   if (!pane) return;
@@ -1749,6 +1794,7 @@ function renderMemoryPane() {
     el('div', { class: 'rbq-hint', text: '角色数 ' + (st.characters ?? Object.keys(memory.allMemories()).length) + '；总条数 ' + (st.total ?? 0) + '。' }),
   ]);
   scroll.appendChild(card);
+  try { scroll.appendChild(buildEmbedCard()); } catch (e) { console.warn('[RBQ] 向量卡构建失败：', e); }
   pane.appendChild(scroll);
 }
 
@@ -1879,7 +1925,7 @@ export function ensurePresetBanner() {
 let __piManifestLoaded = false;
 
 /**
- * 【v2.16.3】往「记忆与召回」页插一张卡：记忆条数 / 小总结条数 / 大总结条数
+ * 【v2.18.0】往「记忆与召回」页插一张卡：记忆条数 / 小总结条数 / 大总结条数
  *   三者统一语义：0 = 全部召回（用户要求默认 0 ✓）
  *   插卡而不是改页内函数体 → 风险小、幂等（带 data 标记 ✓）
  */
@@ -1908,7 +1954,7 @@ function attachMemoryRecallCard() {
   } catch (e) { /* ignore */ }
 }
 
-/** 【v2.16.3】向量召回设置卡（插在记忆页 ✓ 与"召回条数"卡同一套做法）*/
+/** 【v2.18.0】向量召回设置卡（插在记忆页 ✓ 与"召回条数"卡同一套做法）*/
 function attachEmbedCard() {
   try {
     const panes = Array.from(document.querySelectorAll("#rbq-panel .rbq-pane"));
@@ -1964,7 +2010,7 @@ function attachEmbedCard() {
     ]);
     try { refreshInfo(); } catch (e) { /* ignore */ }
     host.insertBefore(card, host.firstChild);
-  } catch (e) { /* ignore */ }
+  } catch (e) { console.warn("[RBQ] 向量召回卡渲染失败：", e); }
 }
 
 function attachSettingsExtras() {
@@ -1980,7 +2026,7 @@ function attachSettingsExtras() {
         const when = st.at ? new Date(st.at).toLocaleTimeString() : '';
         if (!st.latest) return '当前版本 ' + st.current + (st.error ? ('　（检查失败：' + st.error + '）') : '　（还没检查）');
         if (st.hasUpdate) return '当前版本 ' + st.current + '　→　有新版本 ' + st.latest + (st.entryDiff && st.latest === st.current ? '（入口文件不同 = 内容有更新）' : '') + (when ? ('　（' + when + ' 检查）') : '') + (st.dismissed ? '　[已忽略]' : '');
-        /* 【v2.16.3】酒馆服务器 git 比对最权威 ✓ 优先显示它 ✓ */
+        /* 【v2.18.0】酒馆服务器 git 比对最权威 ✓ 优先显示它 ✓ */
         if (st.gitBehind) return '当前版本 ' + st.current + '　酒馆服务器比对：本地提交 ' + ((st.git && st.git.commit) || '?') + ' → 远端有新提交 ✓ 点「立即更新」拉取';
         if (st.git && st.git.commit && st.git.isUpToDate === true) return '当前版本 ' + st.current + '　酒馆服务器比对：本地提交 ' + st.git.commit + ' → 远端已是最新 ✓';
         /* 【用户反馈 · 远程酒馆说"已是最新"】远端报的比你本地还旧 = 几乎一定是 CDN 缓存 ✓ 要说清 ✓ */
@@ -2402,7 +2448,7 @@ function renderExtrasPane(paneKey = 'extras') {
     ta.addEventListener('change', () => { extras.set(e.key, { text: ta.value }); extras.applyAll({ quiet: true }); notify('success', `${e.label} 模板已保存并写入变量`); });
     card.appendChild(ta);
     // 当前会写进去的值
-    /* 【v2.16.3】改用"真正会写进去的内容"（照 applyAll 的规则，含抢话的反向语义）*/
+    /* 【v2.18.0】改用"真正会写进去的内容"（照 applyAll 的规则，含抢话的反向语义）*/
     const built = (extras.previewWritten ? extras.previewWritten(e.key) : extras.buildText(e.key));
     card.appendChild(el('details', { class: 'rbq-librow-more' }, [
       el('summary', { text: (() => { const __pw = extras.previewWritten?.(e.key) ?? ''; return '当前会写进去的内容（' + __pw.length + ' 字）' + (__pw ? '：' + __pw.slice(0, 60).replace(/\s+/g, ' ') + (__pw.length > 60 ? '…' : '') : '　（不写内容）'); })() }),
@@ -2432,7 +2478,12 @@ function renderSettingsPane() {
         const cur = shell.uiConfig().fontSize;
         for (const n of shell.FONT_SIZES) {
           const b = el('button', { class: 'rbq-catchip' + (Number(cur) === n ? ' rbq-active' : ''), text: String(n) + 'px' });
-          b.addEventListener('click', () => { shell.setFontSize(n); render(); });
+          b.addEventListener('click', () => {
+            shell.setFontSize(n);
+            /* 【v2.18.0】立刻应用一次（不等到下次渲染 ✓）*/
+            try { shell.applyShell(q('#rbq-panel')); } catch (e) { /* ignore */ }
+            render();
+          });
           row.appendChild(b);
         }
         return row;

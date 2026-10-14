@@ -35,7 +35,7 @@ function profile() {
 }
 
 /*
- * 【v2.16.3】记忆修订号：任何写入/删除/清空/重映射/盖时间框 都 +1
+ * 【v2.18.0】记忆修订号：任何写入/删除/清空/重映射/盖时间框 都 +1
  *   用途（用户硬约束①）：召回缓存里存这个号，读缓存时对不上就重算 →
  *   删楼层 / 重新生成导致记忆回滚时，旧召回【自动失效】✓ 不会泄漏 ✓
  */
@@ -125,7 +125,7 @@ export function currentTimeBox() {
  * 【用户要求】等"这一轮所有角色记忆 + 最新表格数据"都落定后，把这轮记忆的时间统一改成最新表0时间 ✓
  *   （记忆是在填表之后才写的 ✓ 但收口/补写可能又动了表0 → 所以最后再回填一次最准 ✓）
  */
-  bumpRev();   // v2.16.3 记忆变了 → 修订号 +1（召回缓存靠它失效 ✓）
+  bumpRev();   // v2.18.0 记忆变了 → 修订号 +1（召回缓存靠它失效 ✓）
 export function stampRoundTime(round, timeText) {
   const t = String(timeText ?? "").trim();
   if (!t) return 0;
@@ -141,7 +141,7 @@ export function stampRoundTime(round, timeText) {
   return n;
 }
 
-  bumpRev();   // v2.16.3 记忆变了 → 修订号 +1（召回缓存靠它失效 ✓）
+  bumpRev();   // v2.18.0 记忆变了 → 修订号 +1（召回缓存靠它失效 ✓）
 export function addMemories(items, msgId) {
   const mem = profile();
   let added = 0;
@@ -194,7 +194,7 @@ export function collectFromFacts(unparsed) {
 }
 
 /** 删掉某一层消息写入的全部记忆（重新生成/回滚时用） */
-  bumpRev();   // v2.16.3 记忆变了 → 修订号 +1（召回缓存靠它失效 ✓）
+  bumpRev();   // v2.18.0 记忆变了 → 修订号 +1（召回缓存靠它失效 ✓）
 export function removeByMsgId(msgId) {
   try {
     const store0 = profile();
@@ -211,7 +211,7 @@ export function removeByMsgId(msgId) {
   } catch (e) { console.warn("[RBQ] 回滚记忆失败", e); return 0; }
 }
 
-  bumpRev();   // v2.16.3 记忆变了 → 修订号 +1（召回缓存靠它失效 ✓）
+  bumpRev();   // v2.18.0 记忆变了 → 修订号 +1（召回缓存靠它失效 ✓）
 export function removeMemory(name, id) {
   const mem = profile();
   const list = mem[String(name ?? '')];
@@ -222,7 +222,7 @@ export function removeMemory(name, id) {
   return true;
 }
 
-  bumpRev();   // v2.16.3 记忆变了 → 修订号 +1（召回缓存靠它失效 ✓）
+  bumpRev();   // v2.18.0 记忆变了 → 修订号 +1（召回缓存靠它失效 ✓）
 export function clearCharacter(name) {
   const mem = profile();
   if (!mem[String(name ?? '')]) return false;
@@ -230,7 +230,7 @@ export function clearCharacter(name) {
   return true;
 }
 
-  bumpRev();   // v2.16.3 记忆变了 → 修订号 +1（召回缓存靠它失效 ✓）
+  bumpRev();   // v2.18.0 记忆变了 → 修订号 +1（召回缓存靠它失效 ✓）
 export function clearAll() {
   const d = store.getData();
   d.memories = {};
@@ -471,12 +471,12 @@ export function buildMemoryText({ names = null, query = '', limit = 0, maxChars 
   if (!enabled) { writeRecallVars('', []); return ''; }
 
   const hits = recall({ names, query, limit: cap > 0 ? cap : 9999 });
-  /* 【v2.16.3】小总结召回条数也做成设置：memoryRecallSmallSummaryMax（0 = 全部 ✓）*/
+  /* 【v2.18.0】小总结召回条数也做成设置：memoryRecallSmallSummaryMax（0 = 全部 ✓）*/
   const smallMax = (() => { try { const v = Number(gget("memoryRecallSmallSummaryMax")); return Number.isFinite(v) && v > 0 ? v : 0; } catch (e) { return 0; } })();
   const evs = (() => { try { return eventsForRecall({ query, limit: smallMax > 0 ? smallMax : 9999 }); } catch { return []; } })();
   if (!hits.length && !evs.length) { writeRecallVars('', []); return ''; }
 
-  /* 【v2.16.3】每人保底 2 条，再按分数补满 —— 避免主角把别人的记忆挤掉 */
+  /* 【v2.18.0】每人保底 2 条，再按分数补满 —— 避免主角把别人的记忆挤掉 */
   const perName = (() => { try { const v = Number(gget("memoryRecallPerName")); return Number.isFinite(v) && v > 0 ? v : 2; } catch (e) { return 2; } })();
   const pickedRes = pickByQuota(hits, (h) => line(h.name, h.entry), { maxChars, perName });
   const lines = pickedRes.lines;

@@ -355,6 +355,17 @@ export function renderCharacterCard(host, name, api) {
     })(),
     vitals,
     section('属性', attrBox),
+    /* 【v2.23.0】用户要求：四维系数与四维偏好放到属性下面并【折叠】✓（都在表2 ✓）*/
+    (() => {
+      const coefV = String(get(2, p2, '四维系数(STR|CON|DEX|INT)') ?? get(13, p13, '四维系数(STR|CON|DEX|INT)') ?? '').trim();
+      const prefV = String(get(2, p2, '四维偏好与战斗风格') ?? '').trim();
+      if (!coefV && !prefV) return null;
+      const box = el('div', { class: 'rbq-cc-kv' }, [
+        el('div', { class: 'rbq-cc-kv-row' }, [el('span', { class: 'rbq-cc-attr-label', text: '四维系数' }), el('span', { text: coefV || '—' })]),
+        el('div', { class: 'rbq-cc-kv-row' }, [el('span', { class: 'rbq-cc-attr-label', text: '四维偏好' }), el('span', { text: prefV || '—' })]),
+      ]);
+      return fold('四维系数与偏好', box);
+    })(),
     derived.childElementCount ? section('派生数值', derived) : null,
     fold(effs.length ? `状态（${effs.length}）` : '状态', statusBox),
     fold('生理', d3),                                  // ← 生理紧跟状态（用户要求）
