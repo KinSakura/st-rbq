@@ -136,7 +136,7 @@ export const DEFS = [
   { key: 'theater', label: '小剧场', varName: 'theaterPromptActive', scope: 'chat', placeholders: ['{类型详细要求}'], defaultText: THEATER_TEMPLATE },
   { key: 'rp', hidden: true, label: '四选一提示词（普通）', varName: 'rpPromptActive', scope: 'global', placeholders: [], defaultText: RP_PROMPT_NORMAL },
   { key: 'rpFastForward', hidden: true, label: '四选一提示词（快进模式）', varName: 'rpPromptFastForward', scope: 'global', placeholders: [], defaultText: RP_PROMPT_FASTFORWARD },
-  { key: 'speakBan', label: '{{user}} 抢话', varName: 'userSpeakBanText', scope: 'global', placeholders: [], defaultText: SPEAK_BAN_TEXT },
+  { key: 'speakBan', label: '防{{user}}抢话', varName: 'userSpeakBanText', scope: 'global', placeholders: [], defaultText: SPEAK_BAN_TEXT },
   { key: 'fastForward', hidden: true, label: '快进模式标志', varName: 'fastForward', scope: 'chat', placeholders: [], defaultText: FASTFORWARD_TEXT },
   { key: 'lengthReq', label: '字数要求', varName: 'lengthRequirementText', scope: 'global', placeholders: ['{min}', '{max}'], defaultText: LENGTH_TEMPLATE },
   { key: 'outline', label: '人设大纲', varName: 'userOutlineActiveText', scope: 'global', placeholders: ['{大纲文本}'], defaultText: OUTLINE_TEMPLATE },
@@ -252,6 +252,27 @@ function theaterTypeLines(types, povGender) {
 }
 
 /** 组装某个功能的最终文本 */
+/**
+ * 【v2.16.3】"这个开关现在到底会往变量里写什么" —— 完全照 applyAll 的规则算真值
+ *   注意抢话是【反向】的：关着才写禁令（见 applyAll 里的注释）
+ *   时间框不是变量（写进正文开头）→ 返回空串
+ */
+export function previewWritten(key) {
+  try {
+    const e = get(key);
+    if (!e) return "";
+    if (!e.varName) return "";
+    if (key === "speakBan") return e.enabled ? "" : String(e.text || SPEAK_BAN_TEXT);
+    if (key === "fastForward") return e.enabled ? FASTFORWARD_TEXT : "";
+    if (key === "rp") {
+      const ff = get("fastForward");
+      if (!e.enabled) return RP_DISABLED;
+      return String((ff && ff.enabled ? (get("rpFastForward") || {}).text : e.text) || "");
+    }
+    return buildText(key);
+  } catch (err) { return ""; }
+}
+
 export function buildText(key) {
   const e = get(key);
   if (!e.enabled) return '';

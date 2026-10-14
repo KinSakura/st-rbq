@@ -87,6 +87,7 @@ export const DEF = {
   timeoutMs: 120000,         // 用户要求：默认 120 秒超时 ✓
   retries: 3,
   stream: true,          // 流式输出（默认开）：连接持续有数据 → 不会被网关 100 秒掐断（524）
+  via: 'server',         // server = 经酒馆服务器转发（已验证 ✓ 免跨域 · 绕开改版服务端 job 超时）；direct = 浏览器直连（也验证过 ✓ 出问题可切）
   backoffMs: 1000,
   skipMainTableSegment: true, // 开了侧路就不再让主 API 填表（省 token）
   tasks: { fill: true, memory: true, summary: true, extras: false },
@@ -223,6 +224,22 @@ export function withTimeout(promise, ms, onTimeout) {
 }
 
 /** 指数退避 + 抖动重试 */
+/*
+ * 中止识别（思路来自改版 Luker 的 lib/abort-utils.js）
+ *   isAbortSignalLike / isAbortError —— 我们以前没这层判断 ✗
+ *   后果：用户点了终止，withRetry 还会把请求再发 1~2 次 ✗（白白烧请求、拖慢"停下来"）
+ */
+export function isAbortSignalLike(v) { return Boolean(v && typeof v === "object" && "aborted" in v); }
+export function isAbortError(err, signal = null) {
+  try {
+    if (isAbortSignalLike(signal) && signal.aborted) return true;
+    const name = String((err && err.name) || "").toLowerCase();
+    if (name === "aborterror") return true;
+    const msg = String((err && err.message) || err || "").toLowerCase();
+    return msg.includes("aborted") || msg.includes("abort") || msg.includes("已中止") || msg.includes("已终止");
+  } catch (e) { return false; }
+}
+
 export async function withRetry(fn, { retries = 3, backoffMs = 1000, onAttempt = null, signal = null } = {}) {
   let last = null;
   for (let i = 0; i <= retries; i++) {
@@ -233,7 +250,9 @@ export async function withRetry(fn, { retries = 3, backoffMs = 1000, onAttempt =
       last = e;
       try { onAttempt?.(i + 1, e); } catch { /* ignore */ }
       if (i >= retries) break;
-      if (signal?.aborted) break;
+      /* 【v2.16.3】中止即停：不仅看信号，也看错误本身像不像 abort
+         （抄改版 lib/abort-utils.js 的 isAbortError 思路；边界情况：子请求被中止但外层信号没翻）*/
+      if (signal?.aborted || isAbortError(e, signal)) break;
       const wait = Math.round(backoffMs * Math.pow(2, i) * (0.7 + Math.random() * 0.6));
       await sleep(Math.min(wait, 15000), signal);
     }
@@ -270,6 +289,24 @@ const THOUGHT_PREFILL = '<thought>收到指令，我将一步一步开始思考�
 /**
  * 流式读取 SSE：边生成边收字节（非流式要等整段写完才回，长填表必被网关 100 秒掐断 -> HTTP 524）
  */
+/*
+ * 改版 Luker 的生成是服务端 job；它能被 POST /api/generation/<id>/abort 立刻掐掉
+ *   id 来自响应头 x-luker-generation-id（它自己的 public/scripts/openai.js:4523 就是这么拿的）
+ *   官方酒馆没有这个端点 → 404 也无所谓，全部 best-effort
+ */
+let lastGenId = '';
+export function lastGenerationId() { return lastGenId; }
+async function abortServerJob(id) {
+  const gid = String(id || "").trim();
+  if (!gid) return false;
+  try {
+    const headers = (() => { try { return ctx().getRequestHeaders(); } catch (e) { return { "Content-Type": "application/json" }; } })();
+    const res = await fetch("/api/generation/" + encodeURIComponent(gid) + "/abort", { method: "POST", headers });
+    try { console.log("[RBQ] 已请求改版中止服务端 job " + gid + " → HTTP " + res.status); } catch (e) { /* ignore */ }
+    return res.ok;
+  } catch (e) { try { console.log("[RBQ] 调改版中止接口失败（官方版没有这个端点，正常）" + String(e && e.message)); } catch (e2) { /* ignore */ } return false; }
+}
+
 async function readStream(res) {
   const rd = res.body.getReader();
   const dec = new TextDecoder();
@@ -317,11 +354,30 @@ export async function call(prompt, { system = '', extras = null, task = 'fill', 
 
   await acquire(Math.max(1, Number(c.maxConcurrency) || 3));
   try {
-    const url = String(c.url).trim().replace(/\/+$/, '') + '/chat/completions';
+    const viaServer = c.via !== 'direct';
+    const target = String(c.url).trim().replace(/\/+$/, '');
+    const url = viaServer ? '/api/backends/chat-completions/generate' : (target + '/chat/completions');
     /* 用户可以在面板上填「输出上限」把上限抬高（只抬不降 ✓ 不填就用各任务自带的值） */
     const capUser = Number(c.maxTokens) || 0;
     const useMax = capUser > 0 ? Math.max(capUser, maxTokens) : maxTokens;
-    const body = {
+    /* 经酒馆服务器转发时，用官方那套字段（reverse_proxy/proxy_password）+ chat_completion_source=custom
+       —— 依据 src/endpoints/backends/chat-completions.js:2282-2283 / 2394（CUSTOM 源）*/
+    const body = viaServer ? {
+      /* 依据官方源码：CUSTOM 源读 custom_url 且 key 只能从服务器密钥库取(secret_id) ✗
+         → 无法内联传地址+key；而 OPENAI 源正好支持 reverse_proxy + proxy_password 内联 ✓
+         （src/endpoints/backends/chat-completions.js:2281-2283 vs 2394-2396）*/
+      chat_completion_source: 'openai',
+      reverse_proxy: target,
+      proxy_password: c.key,
+      model: c.model || undefined,
+      temperature,
+      max_tokens: useMax,
+      stream: c.stream !== false,
+      messages: [
+        { role: 'system', content: asSystem },
+        { role: 'assistant', content: THOUGHT_PREFILL },
+      ],
+    } : {
       model: c.model || undefined,
       temperature,
       max_tokens: useMax,
@@ -344,9 +400,15 @@ export async function call(prompt, { system = '', extras = null, task = 'fill', 
       }
       sig = ctrl.signal;
     }
+    try {
+      const host = (() => { try { return new URL(url).host; } catch (e) { return url; } })();
+      console.log('[RBQ] 侧路请求 → ' + (viaServer ? ('经酒馆服务器转发到 ' + target) : ('直连 ' + host)) + ' ｜ 流式=' + (c.stream !== false) + ' ｜ 提示词 ' + asSystem.length + ' 字符 ｜ max_tokens=' + useMax + (c.model ? (' ｜ 模型 ' + c.model) : ''));
+    } catch (e) { /* ignore */ }
     const res = await withTimeout(fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + c.key },
+      headers: viaServer
+        ? (() => { try { return ctx().getRequestHeaders(); } catch (e) { return { 'Content-Type': 'application/json' }; } })()
+        : { 'Content-Type': 'application/json', Authorization: 'Bearer ' + c.key },
       body: JSON.stringify(body),
       signal: sig,
     }), Number(c.timeoutMs) || DEF.timeoutMs, () => { try { ctrl?.abort(); } catch { /* ignore */ } });
@@ -382,7 +444,18 @@ export async function call(prompt, { system = '', extras = null, task = 'fill', 
       lastErrorSet(msg, { url, status: res.status });
       throw new Error(msg);
     }
-    /* 【v2.11.8】默认走流式：边收边拼 ✓ 不会被网关中途掐断 ✓ */
+    /* 【v2.16.3】默认走流式：边收边拼 ✓ 不会被网关中途掐断 ✓ */
+    /* 抓改版的服务端 job id（官方版没有这个头，忽略即可）*/
+    try {
+      const gid = res.headers && res.headers.get ? res.headers.get("x-luker-generation-id") : "";
+      if (gid) { lastGenId = String(gid).trim(); console.log("[RBQ] 拿到改版服务端 job id：" + lastGenId); }
+    } catch (e) { /* ignore */ }
+    /* 这一次请求被中止时，顺带把服务端 job 也掐掉（改版才有效）*/
+    try {
+      if (signal && typeof signal.addEventListener === "function") {
+        signal.addEventListener("abort", () => { abortServerJob(lastGenId); }, { once: true });
+      }
+    } catch (e) { /* ignore */ }
     if (c.stream !== false && res.body && typeof res.body.getReader === "function") {
       const st = await readStream(res);
       const outS = String(st.out || "");
@@ -406,7 +479,13 @@ export async function call(prompt, { system = '', extras = null, task = 'fill', 
       const short = String(raw || '').replace(/\s+/g, ' ').trim().slice(0, 300);
       /* 524/502/504 是网关层的问题（Cloudflare 默认约 100 秒就掐断）✗ 要说人话 ✓ */
       let why = '侧路返回的不是 JSON（可能是反向代理/登录页/被拦了）';
-      if (res.status === 524) why = '上游超时（HTTP 524）：网关等了约 100 秒没等到上游回复 —— 提示词偏大或上游太慢，换直连接口 / 换更快的模型 / 精简预设';
+      if (res.status === 524) {
+        const ra = (() => { try { return res.headers.get('retry-after') || ''; } catch (e) { return ''; } })();
+        /* 说明：x-luker-* 是【改版酒馆自己的服务端】加的头（Luker 是酒馆的名字），不是中转站 */
+        why = '上游超时（HTTP 524）：网关等到超时才回（' + (ra ? ('它说 retry-after=' + ra + ' 秒') : '约 100 秒') + '）'
+          + (gw ? ('，而且这是【' + gw + '】给的错误页 → 你的接口是经中转的') : '')
+          + '。改版酒馆的生成跑在服务端 job 里，有自己的超时上限 → 建议：面板填【专用侧路接口】（默认已走酒馆服务器转发 ✓ 不经 job）／换不经深思的快模型／减少一次要写的表';
+      }
       else if (res.status === 502 || res.status === 504) why = '网关错误或超时（HTTP ' + res.status + '）：上游没回应';
       const msg = why + '：' + short;
       lastErrorSet(msg, { url, status: res.status });

@@ -218,13 +218,44 @@ function dedupeBlocks(text) {
   return { text: out.join(String.fromCharCode(10) + String.fromCharCode(10)), dropped };
 }
 
+/*
+ * 每张表多少轮写一次（节奏）。灵感来自改版 Luker 的 extraction-schedule：
+ *   computeActiveExtractionTypes(schema, seq) —— 每类按 everyN 决定本轮是否激活
+ * 动机：填表提示词实测 43386 字符 ≈ 19721 tokens，其中多半是 15 张表的列清单/写法；
+ *       而生理/关系/技能这些并不是每轮都变 → 只发【本轮该写】的表可以大幅缩短请求 ✓
+ * 保守默认：时空/角色/即时状态/大纲/数值 每轮必写；关系每 2 轮；生理与技能每 3 轮；其余每 2 轮。
+ */
+export const TABLE_CADENCE = { 0: 1, 1: 2, 2: 1, 3: 3, 4: 1, 5: 2, 6: 1, 7: 2, 8: 2, 9: 2, 10: 3, 11: 2, 12: 3, 13: 1, 14: 2 };
+export function activeTables(round, cadence) {
+  /* 【默认关闭】不显式传 cadence 就返回"全部表"= 保持今天的行为 ✓
+     为什么默认关：节奏会漏表（比如第 2 轮新角色登场，表3 生理不在清单里 → 那一行会缺数据 ✗）
+     实测收益也只有 −7%~−19%（大头是固定说明段 ✓ 不是表清单）→ 不值得拿数据完整性去换 ✓
+     想省 token 的人可以自己开（传 cadence）✓ 我会在文档里写明风险 ✓ */
+  if (!cadence) return Object.keys(TABLE_CADENCE).map(Number);
+  const c = Object.assign({}, TABLE_CADENCE, cadence || {});
+  const seq = Math.max(1, Math.floor(Number(round) || 1));
+  const out = [];
+  for (const k of Object.keys(c)) {
+    const every = Math.max(1, Math.floor(Number(c[k]) || 1));
+    if (seq % every === 0 || every === 1) out.push(Number(k));
+  }
+  /* 第一轮永远全写（建档轮，缺表会导致空表）*/
+  if (seq <= 1) return Object.keys(TABLE_CADENCE).map(Number);
+  return out;
+}
+
 export function fillPrompt(rawText, cfg) {
   cfg = normCfg(cfg);
   const text = cleanInput(rawText);
   const guide = (() => {
     try {
       const guide = guideForExtractor(prompts.buildTablePromptGuide?.() ?? '');
-      const spec = prompts.buildTablePromptSpec?.({ withTags: true, withMemory: false, excludeTables: [12], withDefs: true }) ?? '';
+      /* 【v2.16.3】按轮次节奏：只把本轮该写的表放进提示词（表12 一直排除）
+         节奏来自 activeTables()，灵感见改版 Luker 的 extraction-schedule */
+      const __active = activeTables(cfg && cfg.round, (cfg && cfg.cadence) || null);
+      const __allNo = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14];
+      const __skip = [12].concat(__allNo.filter((x) => __active.indexOf(x) < 0));
+      const spec = prompts.buildTablePromptSpec?.({ withTags: true, withMemory: false, excludeTables: __skip, withDefs: true }) ?? '';
       const cols = (prompts.dataWriteSpecV2 && prompts.dataWriteSpecV2()) || "";
       const mustCover = [
         "### 本轮必须覆盖（缺任何一项都算这次填表失败，必须补齐再输出）",
@@ -530,6 +561,19 @@ function missingCells(limit = 40) {
  * 这里在**填表结束之后**再对一次名单：凡是在场、但一条记忆都没有的角色，
  * 单独再发一次记忆请求补上 ✓（不改并发 ✓ 只是补一次 ✓）
  */
+/*
+ * 本轮已经成功写入过记忆的角色名（补跑要排除他们）
+ *   用户实测：刚做完记忆的角色又被补跑生成一次 ✗
+ *   原因是补跑判重 memoriesOf(n).length === 0 在并发下查不到刚写入的记录
+ */
+const memWrittenThisRound = new Set();
+export function markMemoryWritten(names) {
+  try { for (const n of (Array.isArray(names) ? names : [names])) { const s = String(n || "").trim(); if (s) memWrittenThisRound.add(s); } } catch (e) { /* ignore */ }
+  return memWrittenThisRound.size;
+}
+export function memoryWrittenNames() { return [...memWrittenThisRound]; }
+export function resetMemoryWritten() { memWrittenThisRound.clear(); }
+
 export async function taskMemoryFollowUp(text, cfg, signal = null) {
   text = cleanInput(text);   // 记忆补跑的正文也要剔除标签 ✓
   try {
@@ -552,7 +596,15 @@ export async function taskMemoryFollowUp(text, cfg, signal = null) {
       }
       return [...set];
     })();
-    const missing = want.filter((n) => { try { return (memory.memoriesOf(n) ?? []).length === 0; } catch (e) { return false; } });
+    /* 【v2.16.3】先把"本轮已成功写过记忆的人"排除掉 ✓ 再按库里的记录判重 ✓ */
+    const already = want.filter((n) => memWrittenThisRound.has(String(n).trim()));
+    if (already.length) console.log("[RBQ] 记忆补跑：这几个人本轮已经写过记忆，跳过 -> " + already.join("、"));
+    const missing = want.filter((n) => {
+      try {
+        if (memWrittenThisRound.has(String(n).trim())) return false;
+        return (memory.memoriesOf(n) ?? []).length === 0;
+      } catch (e) { return false; }
+    });
     console.log('[RBQ] 记忆校验：在场 ' + want.length + ' 人（' + want.join('、') + '），其中 ' + missing.length + ' 人还没有记忆');
     if (!missing.length) return { applied: 0, missing: [], checked: want };
     console.log('[RBQ] 记忆补跑：这些角色在场但还没有任何记忆 → ' + missing.join('、'));
@@ -610,6 +662,9 @@ function supplementPrompt(list, text) {
 }
 /* 【用户反馈 · 点了终止不会马上停】收口定时器要能被"终止"立刻叫停 ✓ */
 let __cancelled = false;
+/** 每轮侧路开始时清空登记（否则上一轮的记录会把这一轮也挡掉） */
+export function beginRoundMemory() { memWrittenThisRound.clear(); }
+
 export function cancelPending() {
   __cancelled = true;
   try { console.log('[RBQ] 已取消待跑的收口（终止后不再写回表格）'); } catch (e) { /* ignore */ }
@@ -710,7 +765,12 @@ export async function taskMemory(text, cfg, signal = null, msgId = null) {
   if (!items.length) return { added: 0, raw: out.slice(0, 200) };
   /* 【审计修】addMemories 会因为"同 40 字前缀已存在"而一条都不写 ✗
      以前把【解析出的条数】当写入条数 → 面板显示"ok N 条记忆"但一条没入库 ✓ */
-  try { const wr = memory.addMemories(items, msgId); return { added: Number(wr?.added ?? 0), parsed: items.length, chars: out.length }; } catch (e) { return { added: 0, error: String(e?.message ?? e) }; }
+  try {
+    const wr = memory.addMemories(items, msgId);
+    /* 登记本轮写过的角色名（补跑要跳过他们）✓ */
+    try { markMemoryWritten(items.map((x) => String(x && x.name || "").trim()).filter(Boolean)); } catch (e) { /* ignore */ }
+    return { added: Number(wr?.added ?? 0), parsed: items.length, chars: out.length };
+  } catch (e) { return { added: 0, error: String(e?.message ?? e) }; }
 }
 
 /** 把"指定轮次的小总结"拼成总结任务的输入（数据库里就有，不用重发正文） */

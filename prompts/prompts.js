@@ -14,6 +14,8 @@ import * as sideApi from '../core/sideApi.js';
 import { cellS } from '../core/cells.js';
 import * as schemaMod from '../core/schema.js';
 import * as summary from '../core/summary.js';
+import * as recall from '../core/recall.js';   // v2.16.3 预先召回缓存
+import * as extras from '../core/extras.js';   // v2.16.3：写 bigSummaryText 变量要用
 import { listAttrs, resolveAttr } from '../core/alias.js';
 import { GLOBAL_DEFAULTS } from '../core/legacyVars.js';
 import { TAG_TABLE } from '../core/protocol.js';
@@ -21,18 +23,52 @@ import * as store from '../core/store.js';
 import * as memory from '../core/memory.js';
 import * as addons from '../core/addons.js';
 import { getRows } from '../core/store.js';
+import { getColumns } from '../core/schema.js';
+/* 取列名的小帮手（scheme 里改表结构时也不会取错 ✓）*/
+function store0Cols(no) { try { return (getColumns(no) || []).map((x) => String(x)); } catch (e) { return []; } }
 import { chat, ctx } from '../core/ctx.js';
 
-/** 召回用的"当前上下文"：最近几条消息的尾部拼起来 */
-function recallQuery() {
+/**
+ * 召回用的"当前上下文"。真实实现（v2.16.3 起）：
+ *   ① 在场角色名（表0/表2 在场名单 ✓ 走 extras.presentNames ✓ 拿不到时读表0 第一行）
+ *   ② 当前焦点（表6「即时焦点」✓ 按列名取 ✓）
+ *   ③ 最近几条消息的尾部（限额 800 字 ✓ 原有行为）
+ * 为什么加 ①②：光给正文，召回只能靠字面重叠 ✗；把"谁在场""现在要干什么"一起给，
+ *   语义与关键词都对得上，召回到的记忆明显更相关 ✓（零接口成本 ✓）
+ */
+export function recallQuery() {
+  /* ① 在场角色（走 extras.presentNames ✓ 拿不到就读表0 在场名单）*/
+  const __head = [];
+  try {
+    let __names = [];
+    try { __names = (extras.presentNames() || []).map((x) => String(x || "").trim()).filter(Boolean); } catch (e) { __names = []; }
+    if (!__names.length) {
+      try {
+        const __r0 = (getRows(0, { create: false }) || [])[0] || [];
+        const __c0 = store0Cols(0);
+        const __i0 = __c0.indexOf("在场实体名单");
+        if (__i0 >= 0) __names = String(__r0[__i0] || "").split(/[\/\u3001,\uff0c]/).map((x) => x.trim()).filter(Boolean);
+      } catch (e) { /* ignore */ }
+    }
+    if (__names.length) __head.push("【在场】" + __names.join("\u3001"));
+  } catch (e) { /* ignore */ }
+  /* ② 当前焦点（表6 即时焦点 ✓ 按列名取）*/
+  try {
+    const __r6 = (getRows(6, { create: false }) || [])[0] || [];
+    const __c6 = store0Cols(6);
+    const __i6 = __c6.indexOf("即时焦点");
+    const __f = __i6 >= 0 ? String(__r6[__i6] || "").trim() : "";
+    if (__f) __head.push("【焦点】" + __f.slice(0, 120));
+  } catch (e) { /* ignore */ }
   const c = chat();
+  let __prefix = __head.length ? (__head.join(" ") + " ") : "";
   let q = '';
   for (let i = c.length - 1; i >= 0 && q.length < 800; i--) {
     const m = c[i];
     if (!m) continue;
     q += ` ${String(m.mes ?? '').slice(-320)}`;
   }
-  return q;
+  return (__prefix + q);
 }
 
 /* ------------------------------------------------------------- 标签规范 */
@@ -477,7 +513,15 @@ function buildTableDataPlain({ onlyNonEmpty = true, maxRowsPerTable = 200 } = {}
   if (!out.length) return '（暂无表格数据）';
   // 长期记忆：与表格分开（表格装现状、记忆装历史），按相关度只注入最相关的一小段
   try {
-    const mem = memory.buildMemoryText({ query: recallQuery(), limit: 10, maxChars: 5600 });
+    /* 【v2.16.3】优先用【预先召回】的缓存（上一轮结束时算好的 ✓ 含在场/焦点 ✓）
+     拿不到缓存（比如刚打开聊天/缓存失效）→ recallTextFor 内部会当场同步算一次词面召回 ✓ 不会空手 */
+  const mem = (() => {
+    try {
+      const t = recall.recallTextFor({ maxChars: 5600 });
+      if (t && String(t).trim()) return String(t);
+    } catch (e) { /* ignore */ }
+    return memory.buildMemoryText({ query: recallQuery(), limit: 10, maxChars: 5600 });
+  })();
     if (mem) { out.push(''); out.push(mem); }
   } catch (e) { console.warn('[RBQ] 记忆注入失败', e); }
   return out.join('\n');
@@ -652,6 +696,13 @@ export function buildTableDataXml({ for: who = 'main' } = {}) {
     out.push("</states>");
   }
 
+  /* 【v2.16.3】大总结做成变量给主 AI 用（预设里可写 {{getglobalvar::bigSummaryText}}）*/
+  try {
+    const __dg = summary.digestText ? summary.digestText({ limit: (() => {
+  try { const v = Number(SillyTavern.getContext()?.variables?.global?.get?.('memoryRecallBigSummaryMax')); return Number.isFinite(v) && v > 0 ? v : 0; } catch (e) { return 0; }
+})(), maxChars: 3600 }) : null;
+    extras.writeVar("bigSummaryText", String((__dg && __dg.text) || ""), "global");
+  } catch (e) { /* ignore */ }
   const recent = (() => { try { return store.getConfigValue("summary.injectRecent", false) ? summary.recentText({ limit: 5, maxChars: 900 }) : ""; } catch { return ""; } })();
   /* 【用户要求】表格真的是空的时候，不要硬塞一份“假的当前数据”（那会凭空给 AI 时间/地点限制 ✗）
      改成明确告诉它"现在是初始阶段、没有任何记录，请按设定自由发挥" ✓ */

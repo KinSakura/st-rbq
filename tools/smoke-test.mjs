@@ -291,6 +291,337 @@ check('别名下标绝不错位（插列后必须同步别名表）', async () =
   }
 });
 
+check('向量来源默认=主 API（不填接口就用主连接的地址）', async () => {
+  const em = await import('../core/embed.js');
+  const c = em.config();
+  eq(c.source, 'main', '默认来源必须是 main（用户要求：不填就默认用主 API）：' + c.source);
+  ok(em.SOURCES.some((s) => s.id === 'main'), '来源表里要有 main：');
+  ok(typeof em.mainApi === 'function', '应有 mainApi() 读取主连接：');
+  const m = em.mainApi();
+  ok(m && typeof m.url === 'string' && typeof m.key === 'string', 'mainApi 必须返回 {url,key}：' + JSON.stringify(m));
+  /* 没填地址时应回落到主连接的地址（本环境是空 ✓ 不能抛也不能给 undefined）*/
+  const u = em.effectiveUrl('main', '');
+  eq(typeof u, 'string', '主 API 来源的地址必须是字符串：');
+  ok(!String(u).includes('undefined'), '不能出现 undefined：' + u);
+  /* 有效 Key：填了用填的 */
+  eq(em.effectiveKey('main', 'k1'), 'k1', '填了 Key 就该用它：');
+  /* 主 API 来源且没模型 → 不可用（模型必须填）*/
+  em.setConfig({ source: 'main', url: '', key: '', model: '' });
+  eq(em.available(), false, '主 API 但没模型时必须不可用：');
+  const sc = await em.selfCheck();
+  ok(sc.ok === false, '自检应失败：' + JSON.stringify(sc));
+  em.setConfig({ source: 'main' });
+});
+
+check('向量来源表：本地/自建不需要 Key（借鉴改版 connection-manager）', async () => {
+  const em = await import('../core/embed.js');
+  ok(Array.isArray(em.SOURCES) && em.SOURCES.length >= 5, '应有来源表：' + JSON.stringify((em.SOURCES || []).length));
+  ok(em.sourceDef('ollama').needsKey === false, 'ollama 不该要 Key：');
+  ok(em.sourceDef('siliconflow').needsKey === true, 'SiliconFlow 应要 Key：');
+  eq(em.effectiveUrl('siliconflow', ''), 'https://api.siliconflow.cn/v1', '没填地址时应用来源默认地址：');
+  eq(em.effectiveUrl('custom', 'http://x/v1'), 'http://x/v1', '填了就用填的：');
+  /* ollama：没 Key 也应可用（只要模型）*/
+  em.setConfig({ source: 'ollama', url: '', key: '', model: 'nomic-embed-text' });
+  eq(em.available(), true, 'ollama + 模型（无 Key）必须可用：' + JSON.stringify(em.config()));
+  /* 需要 Key 的来源：没 Key 不可用 */
+  em.setConfig({ source: 'siliconflow', key: '', model: 'BAAI/bge-m3' });
+  eq(em.available(), false, 'SiliconFlow 没 Key 时必须不可用：');
+  /* 自检要能明确说是缺 Key */
+  const sc = await em.selfCheck();
+  ok(sc.ok === false && sc.step === 'Key', '自检应报缺 Key：' + JSON.stringify(sc));
+  /* 本地来源没模型也要报缺模型 */
+  em.setConfig({ source: 'ollama', model: '' });
+  const sc2 = await em.selfCheck();
+  ok(sc2.ok === false && sc2.step === '模型', '自检应报缺模型：' + JSON.stringify(sc2));
+  em.setConfig({ source: 'custom', url: '', key: '', model: '' });
+});
+
+check('向量层：余弦/混排/回退（没有 key 必须回退词面）', async () => {
+  const em = await import('../core/embed.js');
+  const rc = await import('../core/recall.js');
+  /* 余弦 */
+  ok(Math.abs(em.cosine([1, 0], [1, 0]) - 1) < 1e-9, '同向余弦应为 1：');
+  ok(Math.abs(em.cosine([1, 0], [0, 1])) < 1e-9, '正交余弦应为 0：');
+  eq(em.cosine([1, 2], [1, 2, 3]), 0, '维度不一致应返回 0：');
+  /* 混排 */
+  ok(Math.abs(em.blend(1, 0, 0.5) - 0.5) < 1e-9, '词面1+向量0 应为 0.5：');
+  ok(Math.abs(em.blend(0, 1, 0.5) - 0.5) < 1e-9, '词面0+向量1 应为 0.5：');
+  ok(em.blend(1, 1, 0.5) === 1, '都满分应为 1：');
+  /* 指纹稳定 */
+  eq(em.hashText('abc'), em.hashText('abc'), '同文本指纹应一致：');
+  ok(em.hashText('abc') !== em.hashText('abd'), '不同文本指纹应不同：');
+  /* 没配置 → 不可用 + 回退 */
+  em.setConfig({ url: '', key: '', model: '' });
+  eq(em.available(), false, '空配置时 available 必须为 false：');
+  const r = await rc.precomputeAsync({ round: 3 });
+  eq(r.mode, 'lexical', '无配置时必须回退词面：' + JSON.stringify({ mode: r.mode, reason: r.reason }));
+  /* 混排纯函数：向量独有的条目过阈值要进来，低于阈值不要 */
+  const mkEntry = (t) => ({ text: t, round: 1, important: 0 });
+  const hits = [{ name: '甲', entry: mkEntry('窗外的雪'), score: 0.9 }];
+  const only = mkEntry('同义但字面无关的句子');
+  const map = new Map();
+  map.set(em.hashText(String(await import('../core/memory.js').then((m) => m.textOf(only)))), 0.9);
+  const rb = rc.rankBlended(hits, map, { threshold: 0.35, topK: 10, lexWeight: 0.5 });
+  ok(rb.list.length >= 1, '混排后至少保留原命中：');
+  ok(rb.list[0].final >= rb.list[rb.list.length - 1].final, '必须按最终分从高到低：');
+  const map2 = new Map();
+  map2.set(em.hashText(String(await import('../core/memory.js').then((m) => m.textOf(only)))), 0.1);
+  const rb2 = rc.rankBlended([], map2, { threshold: 0.35, topK: 10 });
+  eq(rb2.list.length, 0, '低于阈值的向量独有条目不该进来：');
+  /* 覆盖率可读 */
+  const cov = em.coverage();
+  ok(typeof cov.total === 'number' && typeof cov.done === 'number', '覆盖率应可读：' + JSON.stringify(cov));
+  rc.clearCache();
+});
+
+check('预先召回缓存：记忆一变就失效（删楼层/重生成不会用旧召回）', async () => {
+  const rc = await import('../core/recall.js');
+  const m = await import('../core/memory.js');
+  ok(typeof rc.precompute === 'function', '应有 precompute');
+  ok(typeof rc.recallTextFor === 'function', '应有 recallTextFor');
+  const wrote = rc.writeCache({ rev: 1, round: 1, msgId: 2, text: 'x', count: 0, at: 1 });
+  if (wrote === false) { ok(true, '（本环境没有 chatMetadata，跳过缓存断言）'); return; }
+  rc.clearCache();
+  m.clearAll();
+  const r1 = rc.precompute({ round: 5, msgId: 9 });
+  ok(r1.ok === true, 'precompute 应成功：' + JSON.stringify(r1.reason || ''));
+  const st1 = rc.cacheStatus();
+  ok(st1.valid === true, '刚算完缓存应有效：' + JSON.stringify(st1));
+  /* ★ 硬约束①：记忆变了 → 缓存必须失效 */
+  m.addMemories([{ name: '甲', fields: { 感知: '窗外的雪停了' } }], 9);
+  const st2 = rc.cacheStatus();
+  ok(st2.valid === false, '写入新记忆后缓存必须失效（否则召回不含最新记忆）：' + JSON.stringify(st2));
+  ok(String(st2.reason).includes('记忆变了'), '失效原因要说清是记忆变了：' + st2.reason);
+  /* recallTextFor 必须能自愈：失效时自己重算并重新有效 */
+  const t = rc.recallTextFor({ round: 5 });
+  eq(typeof t, 'string', 'recallTextFor 必须返回字符串：');
+  const st3 = rc.cacheStatus();
+  ok(st3.valid === true, '自愈后缓存应重新有效：' + JSON.stringify(st3));
+  /* ★ 硬约束①的另一半：按楼层删记忆 → 也要失效 */
+  m.removeByMsgId(9);
+  ok(rc.cacheStatus().valid === false, '删楼层回滚记忆后缓存必须失效：');
+  rc.clearCache();
+  m.clearAll();
+});
+
+check('记忆修订号 memRev：任何写入/删除都 +1（召回缓存靠它失效）', async () => {
+  const m = await import('../core/memory.js');
+  ok(typeof m.memRev === 'function', '应有 memRev');
+  ok(typeof m.bumpRev === 'function', '应有 bumpRev');
+  m.clearAll();
+  const r0 = m.memRev();
+  m.addMemories([{ name: '甲', fields: { 感知: '看到窗外的雪' } }], 3);
+  const r1 = m.memRev();
+  ok(r1 > r0, '写入后修订号必须 +1：' + r0 + ' → ' + r1);
+  m.removeByMsgId(3);
+  const r2 = m.memRev();
+  ok(r2 > r1, '按楼层删除后必须 +1：' + r1 + ' → ' + r2);
+  m.addMemories([{ name: '乙', fields: { 感知: 'y' } }], 4);
+  const r3 = m.memRev();
+  m.clearCharacter('乙');
+  ok(m.memRev() > r3, '清某个角色后必须 +1：');
+  const r4 = m.memRev();
+  m.clearAll();
+  ok(m.memRev() > r4, '全部清空后必须 +1：');
+  /* 只读操作不能改号 */
+  const r5 = m.memRev();
+  m.allMemories(); m.stats(); m.recall({ query: 'x' });
+  eq(m.memRev(), r5, '只读操作不该改修订号：');
+});
+
+check('召回查询串带上在场角色与焦点（第1步）', async () => {
+  const P = await import('../prompts/prompts.js');
+  const St = await import('../core/store.js');
+  const S = await import('../core/schema.js');
+  ok(typeof P.recallQuery === 'function', 'recallQuery 应已导出（便于测试）');
+  const mk = (no, o) => S.getColumns(no).map((c) => String(o[c] ?? ''));
+  await St.setRows(2, [mk(2, { 角色名称: '苏越' }), mk(2, { 角色名称: '温舒雅' })]);
+  await St.setRows(6, [mk(6, { 即时焦点: '把礼盒里的暗号弄清楚' })]);
+  const q = P.recallQuery();
+  ok(/苏越|温舒雅/.test(q), '查询串里应出现在场角色：' + q.slice(0, 80));
+  ok(q.includes('把礼盒里的暗号弄清楚'), '查询串里应出现当前焦点：' + q.slice(0, 80));
+  /* 没有在场/焦点时不能报错，也不能塞垃圾 */
+  await St.setRows(2, []); await St.setRows(6, []);
+  const q2 = P.recallQuery();
+  eq(typeof q2, 'string', '空数据时必须返回字符串：');
+  ok(!q2.includes('undefined'), '不能出现 undefined：' + q2.slice(0, 60));
+});
+
+check('召回条数：0 = 全部召回（大总结/小总结/记忆三处语义一致）', async () => {
+  const su = await import('../core/summary.js');
+  const St = await import('../core/store.js');
+  const S = await import('../core/schema.js');
+  const cols = S.getColumns(12);
+  const mk = (o) => cols.map((c) => String(o[c] ?? ''));
+  const rows = [];
+  for (let i = 1; i <= 7; i++) rows.push(mk({ 纪元封包名: '第' + i + '纪', 时间轴区间: i + '年', 剧情压缩: '内容' + i }));
+  await St.setRows(12, rows);
+  const all = su.digestText({ limit: 0 });
+  eq(all.count, 7, '表里应有 7 条：');
+  eq(all.shown, 7, 'limit=0 时必须全部召回（7 条）：');
+  const three = su.digestText({ limit: 3 });
+  eq(three.shown, 3, 'limit=3 时只取最近 3 条：');
+  ok(three.text.includes('第7纪') && !three.text.includes('第1纪'), '应该取最近的（7/6/5），不该有第1纪：' + three.text.slice(0, 60));
+  const neg = su.digestText({ limit: -1 });
+  eq(neg.shown, 7, '负数也当全部：');
+  await St.setRows(12, []);
+});
+
+check('大总结做成变量：格式干净、按列名取值、超长截断', async () => {
+  const su = await import('../core/summary.js');
+  const St = await import('../core/store.js');
+  const S = await import('../core/schema.js');
+  ok(typeof su.digestText === 'function', '应有 digestText');
+  eq(su.digestText().text, '', '空表时应返回空串：');
+  const cols = S.getColumns(12);
+  const mk = (o) => cols.map((c) => String(o[c] ?? ''));
+  await St.setRows(12, [
+    mk({ 纪元封包名: '第一纪', 时间轴区间: '1年-2年', 剧情压缩: '开场与结盟。' }),
+    mk({ 纪元封包名: '第二纪', 时间轴区间: '3年-4年', 剧情压缩: 'x'.repeat(500) }),
+  ]);
+  const d = su.digestText({ limit: 5, maxChars: 3600 });
+  ok(d.text.includes('【大总结 · 共 2 条'), '应有表头与条数：' + d.text.slice(0, 40));
+  ok(d.text.includes('第一纪') && d.text.includes('第二纪'), '两条都该出现：');
+  ok(d.text.includes('开场与结盟。'), '正文该出现：');
+  ok(!d.text.includes('x'.repeat(401)), '超长必须截断（不留 401 个 x）：');
+  ok(d.text.includes('…'), '截断处应有省略号：');
+  eq(d.count, 2, 'count 应为 2：');
+  await St.setRows(12, []);
+});
+
+check('附加功能预览：显示真正会写进去的内容（含抢话的反向语义）', async () => {
+  const ex = await import('../core/extras.js');
+  ok(typeof ex.previewWritten === 'function', '应有 previewWritten');
+  /* 抢话：关着 → 写禁令文本；开着 → 写空串 */
+  ex.set('speakBan', { enabled: false, text: '' });
+  const off = ex.previewWritten('speakBan');
+  ok(off.length > 0, '抢话关着时应写进禁令文本：' + JSON.stringify(off.slice(0, 20)));
+  ex.set('speakBan', { enabled: true });
+  eq(ex.previewWritten('speakBan'), '', '抢话开着时应写空串（不限制）：');
+  /* 普通条目：开着写模板、关着写空 */
+  ex.set('narration', { enabled: true });
+  ok(ex.previewWritten('narration').length > 0, '普通条目开着应有内容：');
+  ex.set('narration', { enabled: false });
+  eq(ex.previewWritten('narration'), '', '普通条目关着应写空：');
+  /* 时间框不是变量 → 预览为空 */
+  eq(ex.previewWritten('timeBox'), '', '时间框不该有变量预览：');
+});
+
+check('中止之后不再重试（点了终止就别再发请求）', async () => {
+  const api = await import('../core/sideApi.js');
+  ok(typeof api.isAbortError === 'function', '应有 isAbortError');
+  eq(api.isAbortError({ name: 'AbortError' }), true, 'AbortError 应认出来：');
+  eq(api.isAbortError(new Error('The operation was aborted.')), true, '消息里带 aborted 也算：');
+  eq(api.isAbortError(new Error('HTTP 500')), false, '普通错误不该被当成中止：');
+  const ac = new AbortController();
+  eq(api.isAbortError(null, ac.signal), false, '信号没翻就不算：');
+  ac.abort();
+  eq(api.isAbortError(null, ac.signal), true, '信号翻了就算：');
+  /* 关键：抛 AbortError 时只能试 1 次 */
+  let n1 = 0;
+  try { await api.withRetry(async () => { n1++; throw Object.assign(new Error('aborted'), { name: 'AbortError' }); }, { retries: 3, backoffMs: 1 }); } catch (e) { /* 预期抛错 */ }
+  eq(n1, 1, '抛中止错时只能尝试 1 次：');
+  /* 信号一开始就是中止状态 → 也只 1 次 */
+  const ac2 = new AbortController(); ac2.abort();
+  let n2 = 0;
+  try { await api.withRetry(async () => { n2++; throw new Error('boom'); }, { retries: 3, backoffMs: 1, signal: ac2.signal }); } catch (e) { /* 预期 */ }
+  eq(n2, 1, '信号已中止时只能尝试 1 次：');
+  /* 普通错误仍要重试 */
+  let n3 = 0;
+  try { await api.withRetry(async () => { n3++; if (n3 < 3) throw new Error('HTTP 500'); return 'ok'; }, { retries: 3, backoffMs: 1 }); } catch (e) { /* ignore */ }
+  eq(n3, 3, '普通错误该重试到成功：');
+});
+
+check('记忆召回：每人保底配额（不让主角把别人的记忆挤掉）', async () => {
+  const m = await import('../core/memory.js');
+  ok(typeof m.pickByQuota === 'function', '应有 pickByQuota');
+  const mk = (name, n) => ({ name, entry: { text: 'x'.repeat(40), n } });
+  const items = [mk('甲', 1), mk('甲', 2), mk('甲', 3), mk('甲', 4), mk('乙', 5), mk('丙', 6)];
+  const r = m.pickByQuota(items, (h) => h.name + '#' + h.entry.n + ':' + 'y'.repeat(30), { maxChars: 1000, perName: 2 });
+  const names = r.picked.map((h) => h.name);
+  ok(names[0] === '甲' && names[1] === '甲', '第一轮应先把甲的两条按分数取走：' + names.join(','));
+  ok(names.includes('乙') && names.includes('丙'), '第一轮必须让乙丙也各有一条（保底）：' + names.join(','));
+  ok(names.indexOf('乙') < names.indexOf('甲#' + 3), '乙的保底条应排在甲的第三条之前：' + names.join(','));
+  /* 字数预算很小时，也只能按顺序取，不超预算 */
+  const r2 = m.pickByQuota(items, (h) => 'z'.repeat(60), { maxChars: 130, perName: 2 });
+  ok(r2.used <= 130, '不能超过字数预算：' + r2.used);
+  /* 空输入不炸 */
+  eq(m.pickByQuota([], () => 'x', { maxChars: 100, perName: 2 }).lines.length, 0, '空输入应返回空：');
+});
+
+check('防陈旧注入：关掉原生注入时必须把上一次的注入清空', async () => {
+  const inj = await import('../core/inject.js');
+  const calls = [];
+  const fake = {
+    setExtensionPrompt: (...a) => calls.push(a),
+    constants: { promptTypes: { IN_PROMPT: 0, IN_CHAT: 1 } },
+  };
+  /* 先开着注入（写一次）*/
+  inj.setNativeConfig({ enabled: true, position: 'in_chat', depth: 4 });
+  try { inj.applyNativeInjection(fake); } catch (e) { /* 环境不同也没关系 */ }
+  /* 再关掉 → 必须用空串清一次，否则上一轮的注入会泄漏到下一次请求 */
+  inj.setNativeConfig({ enabled: false });
+  calls.length = 0;
+  const r = inj.applyNativeInjection(fake);
+  ok(r && r.ok === false, '关掉时应返回 ok:false：' + JSON.stringify(r));
+  ok(calls.length >= 1, '关掉时也必须调一次 setExtensionPrompt 去清空');
+  if (calls.length) eq(String(calls[0][1]), '', '清空时文本必须是空串：');
+  calls.length = 0;
+  try { inj.clearNativeInjection(fake); } catch (e) { /* ignore */ }
+  ok(calls.length >= 1, 'clearNativeInjection 也要真的清一次');
+  inj.setNativeConfig({ enabled: false });
+});
+
+check('按轮次节奏只发该写的表（缩短填表提示词）', async () => {
+  const sp = await import('../core/sidePipeline.js');
+  ok(typeof sp.activeTables === 'function', '应有 activeTables');
+  const CAD = sp.TABLE_CADENCE;   // 显式传节奏才生效（默认关闭）
+  const r1 = sp.activeTables(1, CAD);
+  const r2 = sp.activeTables(2, CAD);
+  const r3 = sp.activeTables(3, CAD);
+  ok(r1.includes(3) && r1.includes(5) && r1.includes(10), '第 1 轮应全写（建档轮）：' + JSON.stringify(r1));
+  ok(r2.length < r1.length, '第 2 轮应比第 1 轮少一些（有节奏）：' + r2.length + ' vs ' + r1.length);
+  ok(r3.includes(3) && r3.includes(10), '第 3 轮应轮到生理/技能：' + JSON.stringify(r3));
+  ok(!r2.includes(3), '第 2 轮不该轮到生理：' + JSON.stringify(r2));
+  ok(r1.includes(0) && r2.includes(0) && r3.includes(0), '表0 每轮都要写（实时状态）：');
+  eq(sp.activeTables(2).length, 15, '不传节奏时必须返回全部表（默认关闭）：');
+  ok(sp.activeTables(4, CAD).includes(5), '第 4 轮应轮到关系（每 2 轮）：' + JSON.stringify(sp.activeTables(4)));
+});
+
+check('终止后绝不写脏数据（写库层硬拦，不依赖上层守卫）', async () => {
+  const fz = await import('../core/freeze.js');
+  const T = await import('../core/txn.js');
+  const St = await import('../core/store.js');
+  await St.clearAllTables();
+  fz.clearAbort();
+  await T.applyOps([{ op: 'upsert', table: 2, values: { 角色名称: '终止前' } }], { source: 'side' });
+  const before = (St.getRows(2, { create: false }) || []).length;
+  ok(before > 0, '前置：终止前应该能写进去');
+  fz.requestAbort();
+  const r = await T.applyOps([{ op: 'upsert', table: 2, values: { 角色名称: '终止后' } }], { source: 'side' });
+  const after = (St.getRows(2, { create: false }) || []).length;
+  ok(r && r.aborted === true, '终止后 applyOps 必须回 aborted:true：' + JSON.stringify(r));
+  eq(after, before, '终止后行数不能变：');
+  fz.clearAbort();
+  await St.clearAllTables();
+});
+
+check('记忆补跑不再重复生成刚做过的角色（登记集合 + 判重）', async () => {
+  const sp = await import('../core/sidePipeline.js');
+  ok(typeof sp.markMemoryWritten === 'function', '应有 markMemoryWritten');
+  ok(typeof sp.memoryWrittenNames === 'function', '应有 memoryWrittenNames');
+  ok(typeof sp.resetMemoryWritten === 'function', '应有 resetMemoryWritten');
+  ok(typeof sp.beginRoundMemory === 'function', '应有 beginRoundMemory');
+  sp.resetMemoryWritten();
+  eq(sp.memoryWrittenNames().length, 0, '清空后应为空：');
+  sp.markMemoryWritten(['甲', '乙', '']);
+  const names = sp.memoryWrittenNames();
+  eq(names.length, 2, '只登记有名字的：');
+  ok(names.includes('甲') && names.includes('乙'), '应登记甲乙：' + JSON.stringify(names));
+  sp.beginRoundMemory();
+  eq(sp.memoryWrittenNames().length, 0, '新一轮开始时必须清空（否则会永久挡住）：');
+});
+
 check('写库计数器：applyOps 会让它涨，重试靠它避免重复写入', async () => {
   const fz = await import('../core/freeze.js');
   const T = await import('../core/txn.js');
@@ -581,6 +912,25 @@ await check('删中间楼层：只撤销那一层（含增行 / 删行 / 改格�
     const want = before.map((r) => [r[0], r[1]]);
     eq(JSON.stringify(now), JSON.stringify(want), name + ' 撤销后应与这一层之前一致：');
   }
+});
+
+check('全仓版本字面量一致（角标写死这类坑必须绝迹）', async () => {
+  const fs3 = await import('node:fs');
+  const path3 = await import('node:path');
+  const m = JSON.parse(fs3.readFileSync(path3.join(root, 'manifest.json'), 'utf8'));
+  const walk = (d) => fs3.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? walk(path3.join(d, e.name)) : [path3.join(d, e.name)]);
+  const bad = [];
+  for (const f of walk(root)) {
+    if (!/\.(js|css|html)$/.test(f)) continue;
+    const lines = fs3.readFileSync(f, 'utf8').split('\n');
+    lines.forEach((line, i) => {
+      const inComment = /^\s*(\*|\/\/|\/\*)/.test(line) || /【v\d/.test(line);
+      if (inComment) return;
+      const vs = line.match(/v\d+\.\d+\.\d+/g) || [];
+      for (const v of vs) { if (v !== 'v' + m.version) bad.push(path3.relative(root, f) + ' L' + (i + 1) + ' → ' + v); }
+    });
+  }
+  eq(bad.length, 0, '这些地方的版本号与 manifest 不一致（角标写死就是这么来的）：\n    ' + bad.slice(0, 8).join('\n    '));
 });
 
 await check('版本号一致性：manifest / 入口 / 面板角标 / 罗盘菜单 / 全仓无残留', async () => {

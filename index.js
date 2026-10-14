@@ -30,16 +30,17 @@ import * as inspiration from './core/inspiration.js';
 import * as sideApi from './core/sideApi.js';
 import { extractProse, extractProseStrict } from './core/prose.js';
 import * as sidePipeline from './core/sidePipeline.js';
+import * as recall from './core/recall.js';   // v2.16.3 预先召回
 import { expandUnparsed } from './core/expand.js';
 import * as persona from './core/persona.js';
-import * as progress from './ui/progress.js?v=21180';
+import * as progress from './ui/progress.js?v=21230';
 import { closeNotify } from './core/ctx.js';
 import * as updater from './core/updater.js';
 import * as presetImport from './core/presetImport.js';
 import * as summary from './core/summary.js';
 import { macroTableData, macroTablePrompt, macroAllTablesJson, buildTableData } from './prompts/prompts.js';
-import { mountPanel, showPanel, togglePanel, refreshPanel } from './ui/panel.js?v=21180';
-import { startInputButtonInjection, setPanelOpener, refreshBadge, stopInputButton } from './ui/inputButton.js?v=21180';
+import { mountPanel, showPanel, togglePanel, refreshPanel } from './ui/panel.js?v=21230';
+import { startInputButtonInjection, setPanelOpener, refreshBadge, stopInputButton } from './ui/inputButton.js?v=21230';
 
 const VERSION = '0.1.0';
 let initialized = false;
@@ -809,7 +810,9 @@ async function handleGenerationEndedResolved(target) {
           store.setAnchor(m0, a0);
         }
       } catch (e) { console.warn('[RBQ] 侧路记录 beforeRev 失败', e); }
-      sidePipeline.runForMessage(target, body, { round: sideRound, onProgress, signal: ac.signal }).then((r) => {
+      /* 每轮开始前清空"本轮已写记忆"登记（否则上一轮的记录会挡住这一轮） */
+try { sidePipeline.beginRoundMemory?.(); } catch (e) { /* ignore */ }
+sidePipeline.runForMessage(target, body, { round: sideRound, onProgress, signal: ac.signal }).then((r) => {
         /* 【用户要求】等这一轮「填表 + 所有角色记忆」都写完 → 用最新的表0时间统一回填本轮记忆 ✓
            （记忆是填表之后写的 ✓ 但收尾可能还会补写表0 → 所以最后再统一盖一次最准 ✓） */
         try {
@@ -818,6 +821,20 @@ async function handleGenerationEndedResolved(target) {
               const tt = extras.timeBoxText();
               const n = memory.stampRoundTime(sideRound, tt);
               if (n) { store.commit({ persist: true }); console.log('[RBQ] 已给 ' + n + ' 条记忆写上时间框：' + tt); }
+              /* 【v2.16.3 · 第6步】记忆到此才算全部搞定（填表/记忆/附加/大总结并发 → 补跑 → 时间框）
+                 → 现在做【预先召回】并缓存；下一轮主 AI 构提示词时同步读缓存 ✓
+                 缓存带 memory.memRev，删楼层/重生成导致记忆回滚时自动失效 ✓（用户硬约束①）*/
+              try {
+                Promise.resolve(recall.precomputeAsync ? recall.precomputeAsync({ round: sideRound, msgId: target }) : recall.precompute({ round: sideRound, msgId: target })).then((__rc) => {
+                if (__rc && __rc.ok) {
+                  console.log('[RBQ] 预先召回完成：' + __rc.count + ' 条 · ' + String(__rc.text || '').length + ' 字符 · 记忆版本 ' + __rc.rev);
+                  try { onProgress && onProgress('召回', 'done', __rc.count + ' 条'); } catch (e) { /* ignore */ }
+                } else {
+                  console.log('[RBQ] 预先召回未完成：' + ((__rc && __rc.reason) || '未知'));
+                  try { onProgress && onProgress('召回', 'fail', String((__rc && __rc.reason) || '')); } catch (e) { /* ignore */ }
+                }
+                }).catch((e) => { console.warn("[RBQ] 预先召回（异步）出错", e); });
+              } catch (e) { console.warn('[RBQ] 预先召回出错', e); }
             } catch (e) { /* ignore */ }
           }, 800);
         } catch (e) { /* ignore */ }

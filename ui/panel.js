@@ -13,6 +13,7 @@ import * as zoomPan from './zoomPan.js';
 import { cellS as C } from '../core/cells.js';
 import { getTables, getTable, resolveColumn } from '../core/schema.js';
 import * as store from '../core/store.js';
+import * as embedApi from '../core/embed.js';   // v2.16.3 向量召回设置卡
 import * as memory from '../core/memory.js';
 import * as sideApi from '../core/sideApi.js';
 import * as sidePipeline from '../core/sidePipeline.js';
@@ -112,7 +113,7 @@ function buildPanel() {
   const header = el('div', { class: 'rbq-header' }, [
     el('span', { class: 'rbq-drag-handle', text: '⠿', title: '按住拖动面板', style: 'cursor:move;opacity:.6;margin-right:6px;user-select:none' }),
     el('div', { class: 'rbq-title', html: '📊 RBQ 数据库 <small class="rbq-sub"></small>' }),
-      el('span', { class: 'rbq-ver-badge', text: 'v2.11.8' }),
+      el('span', { class: 'rbq-ver-badge', text: 'v2.16.3' }),
     el('button', { class: 'rbq-btn rbq-icon', title: '刷新', onclick: () => render() }, '⟳'),
     el('button', { class: 'rbq-btn rbq-icon', title: '收起', onclick: () => hidePanel() }, '✕'),
   ]);
@@ -346,6 +347,9 @@ export function showPanel() {
   render();
 
   try { ensureUpdateBanner(); } catch { /* ignore */ }
+  try { attachMemoryRecallCard(); } catch { /* ignore */ }
+try { attachEmbedCard(); } catch { /* ignore */ }
+  try { attachEmbedCard(); } catch { /* ignore */ }
   try { ensurePresetBanner(); } catch { /* ignore */ }
 }
 
@@ -378,7 +382,10 @@ const renderDebounced = debounce(() => render(), 120);
 
 function render() {
   // 横幅要在 render 的 DOM 重建**结束之后**再挂，否则会被清掉
-  setTimeout(() => { try { ensureUpdateBanner(); } catch { /* ignore */ } try { ensurePresetBanner(); } catch { /* ignore */ } }, 0);
+  setTimeout(() => { try { ensureUpdateBanner(); } catch { /* ignore */ }
+  try { attachMemoryRecallCard(); } catch { /* ignore */ }
+try { attachEmbedCard(); } catch { /* ignore */ }
+  try { attachEmbedCard(); } catch { /* ignore */ } try { ensurePresetBanner(); } catch { /* ignore */ } }, 0);
   // 外壳：字号 / 位置 / 大小 + 拖动与缩放（每次渲染都确保手柄在，绑定函数自带幂等）
   try {
     const shellEl = q('#rbq-panel');
@@ -476,7 +483,9 @@ function render() {
   else if (state.tab === 'tables') renderTablesPane();
   else if (state.tab === 'structure') renderStructurePane();
   else if (state.tab === 'audit') renderAuditPane();
-  else { renderSettingsPane(); try { attachSettingsExtras(); } catch { /* ignore */ } }
+  else { renderSettingsPane(); try { attachSettingsExtras(); } catch { /* ignore */ }
+try { attachMemoryRecallCard(); } catch { /* ignore */ }
+try { attachEmbedCard(); } catch { /* ignore */ } }
   if (__paneHandle) {
     try {
       const stage = __paneHandle.stage;
@@ -608,7 +617,7 @@ function renderViewsPane() {
     renderViewport: (key, el2) => renderViewportInto(key, el2),
   };
 
-  import('./views/dashboard.js?v=21180')
+  import('./views/dashboard.js?v=21230')
     .then((m) => m.renderDashboard(host, api))
     .catch((e) => {
       host.textContent = '';
@@ -624,7 +633,7 @@ function renderViewsPane() {
     const panel = el('div', { class: 'rbq-cc-panel' });
     overlay.appendChild(panel);
     pane.appendChild(overlay);
-    import('./views/characterCard.js?v=21180')
+    import('./views/characterCard.js?v=21230')
       .then((m) => m.renderCharacterCard(panel, state.card, {
         el,
         onClose: () => { state.card = null; render(); },
@@ -709,20 +718,20 @@ function __renderViewportInto(key, hostEl) {
     hostEl.textContent = '';
     hostEl.appendChild(el('div', { class: 'rbq-empty', text: `加载失败：${e?.message ?? e}` }));
   };
-  if (key === 'extras') return import('./views/extrasLines.js?v=21180').then((m) => m.renderExtras(hostEl, sub));
-  if (key === 'relations') return import('./views/relations.js?v=21180').then((m) => m.renderRelations(hostEl, sub));
-  if (key === 'map') return import('./views/map.js?v=21180').then((m) => m.renderMap(hostEl, sub));
+  if (key === 'extras') return import('./views/extrasLines.js?v=21230').then((m) => m.renderExtras(hostEl, sub));
+  if (key === 'relations') return import('./views/relations.js?v=21230').then((m) => m.renderRelations(hostEl, sub));
+  if (key === 'map') return import('./views/map.js?v=21230').then((m) => m.renderMap(hostEl, sub));
   if (key === 'inventory' || key === 'equipment') {
-    return import('./views/inventory.js?v=21180').then((m) => (key === 'inventory' ? m.renderInventory(hostEl, sub) : m.renderEquipment(hostEl, sub)));
+    return import('./views/inventory.js?v=21230').then((m) => (key === 'inventory' ? m.renderInventory(hostEl, sub) : m.renderEquipment(hostEl, sub)));
   }
   if (GRAPH_VIEWS.has(key)) {
-    return import('./views/graphs.js?v=21180').then((m) => {
+    return import('./views/graphs.js?v=21230').then((m) => {
       const map = { quests: m.renderQuestBoard, skills: m.renderSkillWheel, monsters: m.renderThreats, factions: m.renderFactionWeb, chronicle: m.renderEraTimeline };
       (map[key] ?? m.renderQuestBoard)(hostEl, sub);
     }).catch(fail);
   }
   if (PANEL_VIEWS.has(key)) {
-    return import('./views/panels.js?v=21180').then((m) => {
+    return import('./views/panels.js?v=21230').then((m) => {
       const hit = m.PANELS.find(([k]) => k === key);
       if (!hit) { hostEl.textContent = ''; hostEl.appendChild(el('div', { class: 'rbq-empty', text: `没有名为 ${key} 的视图` })); return; }
       hit[2](hostEl, sub);
@@ -1869,6 +1878,95 @@ export function ensurePresetBanner() {
 
 let __piManifestLoaded = false;
 
+/**
+ * 【v2.16.3】往「记忆与召回」页插一张卡：记忆条数 / 小总结条数 / 大总结条数
+ *   三者统一语义：0 = 全部召回（用户要求默认 0 ✓）
+ *   插卡而不是改页内函数体 → 风险小、幂等（带 data 标记 ✓）
+ */
+function attachMemoryRecallCard() {
+  try {
+    const panes = Array.from(document.querySelectorAll("#rbq-panel .rbq-pane"));
+    const pane = panes.find((p) => /mem/i.test(String(p.getAttribute("data-pane") || "")) && p.querySelector(".rbq-scroll"));
+    if (!pane) return;
+    const host = pane.querySelector(".rbq-scroll");
+    if (!host || host.querySelector("[data-rbq-recall='1']")) return;
+    const gget = (k) => { try { return ctx()?.variables?.global?.get?.(k); } catch (e) { return undefined; } };
+    const numRow = (label, varName, hintTxt) => {
+      const raw = Number(gget(varName));
+      const inp = el("input", { class: "rbq-input", type: "number", min: "0", value: String(Number.isFinite(raw) ? raw : 0), style: "width:90px" });
+      inp.addEventListener("change", () => { try { extras.writeVar(varName, Number(inp.value) || 0, "global"); notify("success", label + " → " + (Number(inp.value) || 0) + (Number(inp.value) ? "" : "（全部）")); } catch (e) { /* ignore */ } });
+      return el("div", { class: "rbq-row" }, [el("span", { class: "rbq-hint", text: label, style: "min-width:150px" }), inp, el("span", { class: "rbq-hint", text: hintTxt || "" })]);
+    };
+    const card = el("div", { class: "rbq-card", "data-rbq-recall": "1" }, [
+      el("h4", { text: "召回条数" }),
+      el("div", { class: "rbq-hint", text: "三项都是 0 = 全部召回（默认 ✓）。调小可以省 token；数字只限制条数，不影响相关度排序。" }),
+      numRow("角色记忆条数", "memoryRecallMaxEntries", "0 = 全部"),
+      numRow("小总结条数", "memoryRecallSmallSummaryMax", "0 = 全部"),
+      numRow("大总结条数", "memoryRecallBigSummaryMax", "0 = 全部"),
+    ]);
+    host.insertBefore(card, host.firstChild);
+  } catch (e) { /* ignore */ }
+}
+
+/** 【v2.16.3】向量召回设置卡（插在记忆页 ✓ 与"召回条数"卡同一套做法）*/
+function attachEmbedCard() {
+  try {
+    const panes = Array.from(document.querySelectorAll("#rbq-panel .rbq-pane"));
+    const pane = panes.find((p) => /mem/i.test(String(p.getAttribute("data-pane") || "")) && p.querySelector(".rbq-scroll"));
+    if (!pane) return;
+    const host = pane.querySelector(".rbq-scroll");
+    if (!host || host.querySelector("[data-rbq-embed='1']")) return;
+    const txtRow = (label, key, ph, w) => {
+      const cur = (() => { try { return store.getConfigValue("embed." + key, "") || ""; } catch (e) { return ""; } })();
+      const inp = el("input", { class: "rbq-input", type: "text", value: String(cur), placeholder: ph || "", style: "flex:1;min-width:180px" });
+      inp.addEventListener("change", () => { try { store.setConfigValue("embed." + key, String(inp.value || "").trim()); notify("success", label + " 已保存"); } catch (e) { /* ignore */ } });
+      return el("div", { class: "rbq-row" }, [el("span", { class: "rbq-hint", text: label, style: "min-width:110px" }), inp]);
+    };
+    const numRow = (label, key, def, w) => {
+      const cur = (() => { try { const v = store.getConfigValue("embed." + key, undefined); return (v === undefined || v === "") ? def : v; } catch (e) { return def; } })();
+      const inp = el("input", { class: "rbq-input", type: "number", step: "0.05", value: String(cur), style: "width:90px" });
+      inp.addEventListener("change", () => { try { store.setConfigValue("embed." + key, Number(inp.value)); notify("success", label + " 已保存"); } catch (e) { /* ignore */ } });
+      return el("div", { class: "rbq-row" }, [el("span", { class: "rbq-hint", text: label, style: "min-width:110px" }), inp]);
+    };
+    const info = el("div", { class: "rbq-hint", text: "" });
+    const refreshInfo = () => {
+      try {
+        const c = embedApi.coverage();
+        const st = embedApi.indexInfo();
+        info.textContent = "覆盖率：已向量化 " + c.done + " / 总 " + c.total + " 条（" + c.percent + "%）· 索引模型：" + (st.model || "（空）") + " · 维度：" + (st.dim || "—") + (embedApi.available() ? "" : " · 未配置 → 现在走【词面召回】");
+      } catch (e) { info.textContent = "读不到覆盖率：" + String((e && e.message) || e); }
+    };
+    const btn = (label, fn) => { const b = el("button", { class: "rbq-btn", text: label }); b.addEventListener("click", () => { try { fn(b); } catch (e) { notify("error", String((e && e.message) || e)); } }); return b; };
+    const card = el("div", { class: "rbq-card", "data-rbq-embed": "1" }, [
+      el("h4", { text: "向量召回（可选 · 默认走词面）" }),
+      el("div", { class: "rbq-hint", text: "填好下面三项并点一次「重建索引」后，召回会变成「语义 + 词面」混排；没填 / 失败 / 超时都自动回退词面，不会卡住。" }),
+      (() => {
+        const cur = (() => { try { return String(store.getConfigValue("embed.source", "main") || "main"); } catch (e) { return "main"; } })();
+        const sel = el("select", { class: "rbq-select", style: "flex:1" }, embedApi.SOURCES.map((s) => [s.id, s.label]));
+        sel.value = cur;
+        sel.addEventListener("change", () => {
+          try { store.setConfigValue("embed.source", sel.value); notify("success", "来源已切换：" + (embedApi.sourceDef(sel.value).label || sel.value)); } catch (e) { /* ignore */ }
+          refreshInfo();
+        });
+        return el("div", { class: "rbq-row" }, [el("span", { class: "rbq-hint", text: "来源", style: "min-width:110px" }), sel]);
+      })(),
+      txtRow("接口地址", "url", "留空 = 用主 API 的地址 / 本地来源的默认地址"),
+      txtRow("API Key", "key", "sk-..."),
+      txtRow("模型", "model", "BAAI/bge-m3"),
+      el("div", { class: "rbq-row" }, [numRow("维度(0=原生)", "dimensions", 0), numRow("相似度阈值", "threshold", 0.35), numRow("最多取几条", "topK", 20)]),
+      info,
+      el("div", { class: "rbq-row" }, [
+        btn("连接自检", async (b) => { b.disabled = true; b.textContent = "自检中…"; try { const r = await embedApi.selfCheck(); notify(r.ok ? "success" : "error", (r.ok ? "自检通过：" : "自检失败[" + r.step + "]：") + r.message); } finally { b.disabled = false; b.textContent = "连接自检"; refreshInfo(); } }),
+        btn("重建索引", async (b) => { b.disabled = true; try { const r = await embedApi.rebuild({ onProgress: (d, t) => { b.textContent = "重建中 " + d + "/" + t; } }); notify(r.ok ? "success" : "error", r.ok ? ("重建完成：" + r.done + " 条，维度 " + r.dim) : ("重建失败：" + (r.error || "未知"))); } finally { b.disabled = false; b.textContent = "重建索引"; refreshInfo(); } }),
+        btn("清空索引", () => { embedApi.clearIndex(); notify("success", "索引已清空"); refreshInfo(); }),
+      ]),
+      el("div", { class: "rbq-hint", text: "改动先生效再重算：重建索引会用当前模型把所有记忆重新向量化（换模型必须重建）。" }),
+    ]);
+    try { refreshInfo(); } catch (e) { /* ignore */ }
+    host.insertBefore(card, host.firstChild);
+  } catch (e) { /* ignore */ }
+}
+
 function attachSettingsExtras() {
   const host = q('.rbq-pane[data-pane="settings"] .rbq-scroll');
   if (!host || host.querySelector('[data-rbq-upd]')) return;
@@ -1882,7 +1980,7 @@ function attachSettingsExtras() {
         const when = st.at ? new Date(st.at).toLocaleTimeString() : '';
         if (!st.latest) return '当前版本 ' + st.current + (st.error ? ('　（检查失败：' + st.error + '）') : '　（还没检查）');
         if (st.hasUpdate) return '当前版本 ' + st.current + '　→　有新版本 ' + st.latest + (st.entryDiff && st.latest === st.current ? '（入口文件不同 = 内容有更新）' : '') + (when ? ('　（' + when + ' 检查）') : '') + (st.dismissed ? '　[已忽略]' : '');
-        /* 【v2.11.8】酒馆服务器 git 比对最权威 ✓ 优先显示它 ✓ */
+        /* 【v2.16.3】酒馆服务器 git 比对最权威 ✓ 优先显示它 ✓ */
         if (st.gitBehind) return '当前版本 ' + st.current + '　酒馆服务器比对：本地提交 ' + ((st.git && st.git.commit) || '?') + ' → 远端有新提交 ✓ 点「立即更新」拉取';
         if (st.git && st.git.commit && st.git.isUpToDate === true) return '当前版本 ' + st.current + '　酒馆服务器比对：本地提交 ' + st.git.commit + ' → 远端已是最新 ✓';
         /* 【用户反馈 · 远程酒馆说"已是最新"】远端报的比你本地还旧 = 几乎一定是 CDN 缓存 ✓ 要说清 ✓ */
@@ -1990,6 +2088,8 @@ function renderSidePane() {
   card.appendChild(mk('输出上限', 'maxTokens', 'number', '110px'));
   /* 流式开关（用户建议 · 默认开）：不开的话长填表必然被网关 100 秒掐断（HTTP 524）*/
   card.appendChild(toggleRow('流式输出（强烈建议开）', c.stream !== false, (v) => { sideApi.setConfig({ stream: v }); render(); }));
+  /* 经酒馆服务器转发（默认开）：免跨域；而且服务端是原样转发上游 SSE（官方源码 L2693 forwardFetchResponse）*/
+  card.appendChild(toggleRow('经酒馆服务器转发（推荐 · 免跨域）', c.via !== 'direct', (v) => { sideApi.setConfig({ via: v ? 'server' : 'direct' }); render(); }));
   try {
     const le = sideApi.lastError?.() ?? null;
     if (le && le.message) {
@@ -2049,11 +2149,13 @@ function renderSidePane() {
         onclick: async () => {
           const txt = (() => { try { return String(ctx()?.chat?.[rec.id]?.mes ?? ''); } catch { return ''; } })();
           if (!txt) { notify('warning', '拿不到那一层的正文'); return; }
-          // 走 api.sideRun（会弹右下角的进度卡片 + 带「终止」按钮）；
-          // 以前这里直接调 sidePipeline.rerun ✗ → 用户点了重跑却看不到任何进度卡片
+          /* 【用户实测 bug】以前这里写的是裸的 api ✗ —— 那是另一个函数里的局部变量 ✓
+             在这里根本不存在 → 未声明标识符会抛 ReferenceError → 弹「重跑失败：api is not defined」✗
+             正确入口是 index.js 暴露出来的 window.RBQ（window.RBQ = api ✓）✓ */
+          const RBQAPI = (() => { try { return window.RBQ; } catch (e) { return null; } })();
           try {
-            if (api && typeof api.sideRun === 'function') {
-              await api.sideRun(rec.id, txt, { round: rec.round });
+            if (RBQAPI && typeof RBQAPI.sideRun === 'function') {
+              await RBQAPI.sideRun(rec.id, txt, { round: rec.round });
             } else {
               notify('info', '正在重跑侧路…');
               await sidePipeline.rerun(rec.id, txt, { round: rec.round });
@@ -2229,7 +2331,7 @@ function renderExtrasPane(paneKey = 'extras') {
         const lab = card.querySelector('.rbq-switch-label, .rbq-hint');
         if (lab) lab.textContent = chk.checked ? '已开启' : '已关闭';
         const cnt = card.querySelector('.rbq-card-count');
-        if (cnt) { try { const n = (extras.text?.(e.key) ?? '').length; cnt.textContent = '当前会写进去的内容（' + n + ' 字）'; } catch (er) { /* ignore */ } }
+        if (cnt) { try { const n = extras.previewWritten?.(e.key)?.length ?? 0; cnt.textContent = '当前会写进去的内容（' + n + ' 字）'; } catch (er) { /* ignore */ } }
       } catch (e2) { /* ignore */ }
     });
     card.appendChild(el('div', { class: 'rbq-row' }, [
@@ -2300,10 +2402,11 @@ function renderExtrasPane(paneKey = 'extras') {
     ta.addEventListener('change', () => { extras.set(e.key, { text: ta.value }); extras.applyAll({ quiet: true }); notify('success', `${e.label} 模板已保存并写入变量`); });
     card.appendChild(ta);
     // 当前会写进去的值
-    const built = extras.buildText(e.key);
+    /* 【v2.16.3】改用"真正会写进去的内容"（照 applyAll 的规则，含抢话的反向语义）*/
+    const built = (extras.previewWritten ? extras.previewWritten(e.key) : extras.buildText(e.key));
     card.appendChild(el('details', { class: 'rbq-librow-more' }, [
-      el('summary', { text: `当前会写进去的内容（${built.length} 字）` }),
-      el('pre', { class: 'rbq-pre', text: built || '（未开启，写空串）' }),
+      el('summary', { text: (() => { const __pw = extras.previewWritten?.(e.key) ?? ''; return '当前会写进去的内容（' + __pw.length + ' 字）' + (__pw ? '：' + __pw.slice(0, 60).replace(/\s+/g, ' ') + (__pw.length > 60 ? '…' : '') : '　（不写内容）'); })() }),
+      el('pre', { class: 'rbq-pre', text: built || '（当前不会写任何内容）' }),
     ]));
     scroll.appendChild(card);
   }
@@ -2356,7 +2459,7 @@ function renderSettingsPane() {
         sel.addEventListener('change', () => {
           store.updateConfig({ inputButton: { placement: sel.value } });
           notify('info', '位置已切换，重新注入按钮…');
-          import('./inputButton.js?v=21180').then((m) => { m.stopInputButton(); m.startInputButtonInjection(); });
+          import('./inputButton.js?v=21230').then((m) => { m.stopInputButton(); m.startInputButtonInjection(); });
           render();
         });
         return sel;
@@ -2555,6 +2658,9 @@ export function refreshPanel() {
   refreshBadge();
 
   try { ensureUpdateBanner(); } catch { /* ignore */ }
+  try { attachMemoryRecallCard(); } catch { /* ignore */ }
+try { attachEmbedCard(); } catch { /* ignore */ }
+  try { attachEmbedCard(); } catch { /* ignore */ }
   try { ensurePresetBanner(); } catch { /* ignore */ }
 }
 

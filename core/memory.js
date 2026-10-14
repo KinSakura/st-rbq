@@ -34,6 +34,15 @@ function profile() {
   return d.memories;
 }
 
+/*
+ * 【v2.16.3】记忆修订号：任何写入/删除/清空/重映射/盖时间框 都 +1
+ *   用途（用户硬约束①）：召回缓存里存这个号，读缓存时对不上就重算 →
+ *   删楼层 / 重新生成导致记忆回滚时，旧召回【自动失效】✓ 不会泄漏 ✓
+ */
+let __memRev = 0;
+export function memRev() { return __memRev; }
+export function bumpRev() { __memRev += 1; return __memRev; }
+
 export function allMemories() { return profile(); }
 
 export function memoriesOf(name) {
@@ -116,6 +125,7 @@ export function currentTimeBox() {
  * 【用户要求】等"这一轮所有角色记忆 + 最新表格数据"都落定后，把这轮记忆的时间统一改成最新表0时间 ✓
  *   （记忆是在填表之后才写的 ✓ 但收口/补写可能又动了表0 → 所以最后再回填一次最准 ✓）
  */
+  bumpRev();   // v2.16.3 记忆变了 → 修订号 +1（召回缓存靠它失效 ✓）
 export function stampRoundTime(round, timeText) {
   const t = String(timeText ?? "").trim();
   if (!t) return 0;
@@ -131,6 +141,7 @@ export function stampRoundTime(round, timeText) {
   return n;
 }
 
+  bumpRev();   // v2.16.3 记忆变了 → 修订号 +1（召回缓存靠它失效 ✓）
 export function addMemories(items, msgId) {
   const mem = profile();
   let added = 0;
@@ -183,6 +194,7 @@ export function collectFromFacts(unparsed) {
 }
 
 /** 删掉某一层消息写入的全部记忆（重新生成/回滚时用） */
+  bumpRev();   // v2.16.3 记忆变了 → 修订号 +1（召回缓存靠它失效 ✓）
 export function removeByMsgId(msgId) {
   try {
     const store0 = profile();
@@ -199,6 +211,7 @@ export function removeByMsgId(msgId) {
   } catch (e) { console.warn("[RBQ] 回滚记忆失败", e); return 0; }
 }
 
+  bumpRev();   // v2.16.3 记忆变了 → 修订号 +1（召回缓存靠它失效 ✓）
 export function removeMemory(name, id) {
   const mem = profile();
   const list = mem[String(name ?? '')];
@@ -209,6 +222,7 @@ export function removeMemory(name, id) {
   return true;
 }
 
+  bumpRev();   // v2.16.3 记忆变了 → 修订号 +1（召回缓存靠它失效 ✓）
 export function clearCharacter(name) {
   const mem = profile();
   if (!mem[String(name ?? '')]) return false;
@@ -216,6 +230,7 @@ export function clearCharacter(name) {
   return true;
 }
 
+  bumpRev();   // v2.16.3 记忆变了 → 修订号 +1（召回缓存靠它失效 ✓）
 export function clearAll() {
   const d = store.getData();
   d.memories = {};
@@ -396,6 +411,44 @@ export function line(name, e) {
  * 生成要注入提示词的记忆文本（有长度上限，防止把上下文吃光）。
  * @param {{names?:string[], query?:string, limit?:number, maxChars?:number}} opts
  */
+/**
+ * 按"每人保底配额"挑选要注入的记忆（纯函数，便于单测）
+ *   items 需按分数从高到低排好（recall 已经这么做）
+ *   makeLine(item) → 这一条最终渲染出来的文本（用来算字数）
+ *   perName：每个名字第一轮最多先取几条（默认 2）
+ * @returns {{lines:string[], used:number, picked:any[]}}
+ */
+export function pickByQuota(items, makeLine, { maxChars = 0, perName = 2 } = {}) {
+  const list = Array.isArray(items) ? items : [];
+  const lines = [];
+  const picked = [];
+  let used = 0;
+  const seen = new Set();
+  const cnt = new Map();
+  const tryPush = (h) => {
+    const l = String(makeLine(h) ?? "");
+    if (!l) return false;
+    if (maxChars > 0 && used + l.length > maxChars) return false;
+    lines.push(l);
+    picked.push(h);
+    used += l.length + 1;
+    seen.add(h);
+    cnt.set(h.name, (cnt.get(h.name) || 0) + 1);
+    return true;
+  };
+  /* 第一轮：每人最多 perName 条（保证人人都能被想起）*/
+  for (const h of list) {
+    if ((cnt.get(h.name) || 0) >= perName) continue;
+    tryPush(h);
+  }
+  /* 第二轮：还有预算就按分数补满 */
+  for (const h of list) {
+    if (seen.has(h)) continue;
+    if (!tryPush(h)) break;
+  }
+  return { lines, used, picked };
+}
+
 export function buildMemoryText({ names = null, query = '', limit = 0, maxChars = 0 } = {}) {
   const gget = (k) => { try { return ctx()?.variables?.global?.get?.(k); } catch { return undefined; } };
   const falsy = (v) => v === false || v === 0 || ['false', '0', 'off', 'no'].includes(String(v ?? '').trim().toLowerCase());
@@ -418,17 +471,16 @@ export function buildMemoryText({ names = null, query = '', limit = 0, maxChars 
   if (!enabled) { writeRecallVars('', []); return ''; }
 
   const hits = recall({ names, query, limit: cap > 0 ? cap : 9999 });
-  const evs = (() => { try { return eventsForRecall({ query, limit: 3 }); } catch { return []; } })();
+  /* 【v2.16.3】小总结召回条数也做成设置：memoryRecallSmallSummaryMax（0 = 全部 ✓）*/
+  const smallMax = (() => { try { const v = Number(gget("memoryRecallSmallSummaryMax")); return Number.isFinite(v) && v > 0 ? v : 0; } catch (e) { return 0; } })();
+  const evs = (() => { try { return eventsForRecall({ query, limit: smallMax > 0 ? smallMax : 9999 }); } catch { return []; } })();
   if (!hits.length && !evs.length) { writeRecallVars('', []); return ''; }
 
-  const lines = [];
-  let used = 0;
-  for (const h of hits) {
-    const l = line(h.name, h.entry);
-    if (maxChars > 0 && used + l.length > maxChars) break;
-    lines.push(l);
-    used += l.length + 1;
-  }
+  /* 【v2.16.3】每人保底 2 条，再按分数补满 —— 避免主角把别人的记忆挤掉 */
+  const perName = (() => { try { const v = Number(gget("memoryRecallPerName")); return Number.isFinite(v) && v > 0 ? v : 2; } catch (e) { return 2; } })();
+  const pickedRes = pickByQuota(hits, (h) => line(h.name, h.entry), { maxChars, perName });
+  const lines = pickedRes.lines;
+  void pickedRes.used;
   const parts = [];
   if (lines.length) parts.push('## 长期记忆（按相关度召回，供你保持前后一致）', ...lines);
   if (evs.length) {

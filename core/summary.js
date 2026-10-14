@@ -119,6 +119,52 @@ export function clearAll() {
 export function listEvents({ limit = 50 } = {}) { const d = data(); return d.events.slice(-limit); }
 
 /** 给 AI 的"最近几轮发生了什么"（接在表格数据后面，防止它忘掉刚发生的事） */
+/*
+ * 【v2.16.3】把"大总结"整理成一段可以直接发给主 AI 的文本
+ *   数据来源 = 表12「宏观纪事录压缩封包表」（每行一次大总结）
+ *   取列一律按【列名】找（改表结构也不会错 ✓），找不到就用兜底列位
+ *   输出形状：
+ *     【大总结 · 共 N 条 · 显示最近 M 条】
+ *     - 第 K 条｜纪元封包名｜时间轴区间：剧情压缩（超长截断）
+ */
+export function digestText({ limit = 5, maxChars = 3600 } = {}) {
+  const out = { text: "", count: 0, shown: 0 };
+  try {
+    const rows = (store.getRows(12, { create: false }) ?? []).filter((r) => r && String(r.some ? r.some((c) => String(c ?? "").trim()) : "").trim());
+    out.count = rows.length;
+    if (!rows.length) return out;
+    const cols = (() => { try { return (store.getTable(12)?.columns ?? []).map((x) => String(x)); } catch (e) { return []; } })();
+    const idx = (name, fallback) => { const i = cols.indexOf(name); return i >= 0 ? i : fallback; };
+    const cName = idx("纪元封包名", 0);
+    const cRange = idx("时间轴区间", 1);
+    const cStory = idx("剧情压缩", 2);
+    const cEvent = idx("重大事件纪要", 3);
+    const lines = [];
+    let used = 0;
+    /* limit<=0 = 全部召回（用户要求：默认 0 就是全部 ✓）*/
+    const __n = Number(limit);
+    const __take = (Number.isFinite(__n) && __n > 0) ? __n : rows.length;
+    const tail = rows.slice(Math.max(0, rows.length - __take));
+    for (let k = 0; k < tail.length; k++) {
+      const r = tail[k];
+      const nm = String(r?.[cName] ?? "").trim() || ("第 " + (rows.length - tail.length + k + 1) + " 条");
+      const rg = String(r?.[cRange] ?? "").trim();
+      let st = String(r?.[cStory] ?? "").trim();
+      const ev = String(r?.[cEvent] ?? "").trim();
+      if (!st && ev) st = ev;
+      if (st.length > 400) st = st.slice(0, 400) + "…";
+      const line = "- " + nm + (rg ? ("｜" + rg) : "") + (st ? ("：" + st) : "");
+      if (maxChars > 0 && used + line.length > maxChars) break;
+      lines.push(line);
+      used += line.length + 1;
+    }
+    out.shown = lines.length;
+    if (!lines.length) return out;
+    out.text = "【大总结 · 共 " + rows.length + " 条 · 显示最近 " + lines.length + " 条】" + String.fromCharCode(10) + lines.join(String.fromCharCode(10));
+  } catch (e) { /* 读不到就当没有 */ }
+  return out;
+}
+
 export function recentText({ limit = 5, maxChars = 3600 } = {}) {
   const ev = listEvents({ limit });
   if (!ev.length) return '';
